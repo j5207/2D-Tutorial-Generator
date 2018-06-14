@@ -23,7 +23,7 @@ while(1):
 	}
 
 
-	kernal = np.ones((6 ,6), "uint8")
+	kernal = np.ones((8 ,8), "uint8")
 	kernel_square = np.ones((11,11),np.uint8)
 	kernel_ellipse= cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(5,5))
 
