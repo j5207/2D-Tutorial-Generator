@@ -16,18 +16,60 @@ while(1):
 		'blue' : [np.array([113,50,50],np.uint8), np.array([130,255,255],np.uint8), 800, (255,0,0)],
 		'yello' : [np.array([22,60,200],np.uint8), np.array([60,255,255],np.uint8), 500, (0,255,0)],
 		'green' : [np.array([30,19,76],np.uint8), np.array([88,128,162],np.uint8), 500, (0,255,0)],
-		'washer' : [np.array([0,40,80],np.uint8), np.array([6,112,129],np.uint8), 300, (120,120,0)],
 	}
 
-	hand_dic = {
-		'hand' : [np.array([0,56,100],np.uint8), np.array([17,255,255],np.uint8), 500, (0,0,255)],
+	circle_dic = {
+		'washer' : [np.array([0,0,0],np.uint8), np.array([22,255,89],np.uint8), 100, (120,120,0)]
 	}
 
-	kernal = np.ones((5 ,5), "uint8")
+
+	kernal = np.ones((6 ,6), "uint8")
+	kernel_square = np.ones((11,11),np.uint8)
+	kernel_ellipse= cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(5,5))
+
+	for k in circle_dic:
+		mask = cv2.inRange(hsv, circle_dic[k][0], circle_dic[k][1])
+		# dilation = cv2.dilate(mask,kernel_ellipse,iterations = 1)
+		# erosion = cv2.erode(dilation,kernel_square,iterations = 1)    
+		# dilation2 = cv2.dilate(erosion,kernel_ellipse,iterations = 1)    
+		# filtered = cv2.medianBlur(dilation2,5)
+		# kernel_ellipse= cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(8,8))
+		# dilation2 = cv2.dilate(filtered,kernel_ellipse,iterations = 1)
+		# kernel_ellipse= cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(5,5))
+		# median = cv2.medianBlur(dilation2,5)
+		# ret,mask = cv2.threshold(median,127,255,0)
+		mask = cv2.dilate(mask, kernal)
+		cv2.imshow('circle', mask)
+		
+		circles = cv2.HoughCircles(mask,cv2.HOUGH_GRADIENT,1,20,
+							param1=50,param2=30,minRadius=0,maxRadius=100)
+		try:
+			circles = np.uint16(np.around(circles))
+		
+			print circles
+			for i in np.squeeze(circles):
+				# draw the outer circle
+				cv2.circle(img,(i[0],i[1]),i[2],(0,255,0),2)
+				# draw the center of the circle
+				cv2.circle(img,(i[0],i[1]),3,(0,0,255),3)
+				cv2.putText(img,k,(i[0],i[1]),cv2.FONT_HERSHEY_SIMPLEX, 1.0, circle_dic[k][3])
+		except:
+			print 'no circles'
+
+			
 
 	for k in dic:
 		mask = cv2.inRange(hsv, dic[k][0], dic[k][1])
-		mask = cv2.dilate(mask, kernal)
+		dilation = cv2.dilate(mask,kernel_ellipse,iterations = 1)
+		erosion = cv2.erode(dilation,kernel_square,iterations = 1)    
+		dilation2 = cv2.dilate(erosion,kernel_ellipse,iterations = 1)    
+		filtered = cv2.medianBlur(dilation2,5)
+		kernel_ellipse= cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(8,8))
+		dilation2 = cv2.dilate(filtered,kernel_ellipse,iterations = 1)
+		kernel_ellipse= cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(5,5))
+		median = cv2.medianBlur(dilation2,5)
+		ret,mask = cv2.threshold(median,127,255,0)
+		# mask = cv2.dilate(mask, kernal)
 		(_,contours,hierarchy)=cv2.findContours(mask,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
 		for pic, contour in enumerate(contours):
 			area = cv2.contourArea(contour)
@@ -45,10 +87,12 @@ while(1):
 	#cv2.imshow("Redcolour",red)
 	cv2.imshow("Color Tracking",img)
 	#cv2.imshow("red",res)
-	if cv2.waitKey(10) & 0xFF == ord('q'):
-		cap.release()
-		cv2.destroyAllWindows()
+	k = cv2.waitKey(5) & 0xFF
+	if k == 27:
 		break
+
+cap.release()
+cv2.destroyAllWindows()
 
 
 
