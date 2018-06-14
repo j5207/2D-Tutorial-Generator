@@ -19,6 +19,10 @@ while(1):
 		'washer' : [np.array([0,40,80],np.uint8), np.array([6,112,129],np.uint8), 300, (120,120,0)],
 	}
 
+	hand_dic = {
+		'hand' : [np.array([0,56,100],np.uint8), np.array([17,255,255],np.uint8), 500, (0,0,255)],
+	}
+
 	kernal = np.ones((5 ,5), "uint8")
 
 	for k in dic:
