@@ -19,10 +19,11 @@ class hand_tracking():
 
         median = cv2.medianBlur(dilation2,5)
         _,thresh = cv2.threshold(median,127,255,0)
-        cv2.imshow('thresh', thresh)
+        # cv2.imshow('thresh', thresh)
         
 
-        _, contours, _ = cv2.findContours(thresh,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)   
+        _, contours, _ = cv2.findContours(thresh,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)  
+        self.hand_cnt = [] 
         
 
         max_area=1000
@@ -39,10 +40,14 @@ class hand_tracking():
                     hull2 = cv2.convexHull(cnts,returnPoints = False)
                     defects = cv2.convexityDefects(cnts,hull2)
                     cv2.drawContours(frame,[approx],-1,(0, 255, 0),2)
+                    self.hand_cnt.append([approx])
         except:
             pass
                 
-        cv2.imshow('hand_tracking',frame)
+        cv2.imshow('hand_tracking',frame) 
+
+    def get_result(self):
+        return self.hand_cnt
 
 # if __name__ == '__main__':
 #     cap = cv2.VideoCapture(0)
