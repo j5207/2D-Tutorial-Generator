@@ -6,6 +6,18 @@ import numpy as np
 #capturing video through webcam
 cap=cv2.VideoCapture(0)
 
+def auto_canny(image, sigma=0.33):
+    	# compute the median of the single channel pixel intensities
+	v = np.median(image)
+ 
+	# apply automatic Canny edge detection using the computed median
+	lower = int(max(0, (1.0 - sigma) * v))
+	upper = int(min(255, (1.0 + sigma) * v))
+	edged = cv2.Canny(image, lower, upper)
+ 
+	# return the edged image
+	return edged
+
 while(1):
 	_, img = cap.read()
 
@@ -29,6 +41,7 @@ while(1):
 
 	for k in circle_dic:
 		mask = cv2.inRange(hsv, circle_dic[k][0], circle_dic[k][1])
+		
 		# dilation = cv2.dilate(mask,kernel_ellipse,iterations = 1)
 		# erosion = cv2.erode(dilation,kernel_square,iterations = 1)    
 		# dilation2 = cv2.dilate(erosion,kernel_ellipse,iterations = 1)    
@@ -38,12 +51,17 @@ while(1):
 		# kernel_ellipse= cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(5,5))
 		# median = cv2.medianBlur(dilation2,5)
 		# ret,mask = cv2.threshold(median,127,255,0)
-		mask = cv2.dilate(mask, kernal)
+		# mask = cv2.dilate(mask, kernal)
+		mask = cv2.GaussianBlur(mask,(11,11),-1)
+		# mask = cv2.Laplacian(mask,cv2.CV_64F)
+		# mask = cv2.bilateralFilter(mask,9,75,75)
+		# mask = cv2.medianBlur(mask,5)
+
 		cv2.imshow('circle', mask)
-		
-		circles = cv2.HoughCircles(mask,cv2.HOUGH_GRADIENT,1,20,
-							param1=50,param2=30,minRadius=0,maxRadius=100)
+		cv2.imwrite('circle.jpg', mask)
 		try:
+			circles = cv2.HoughCircles(mask,cv2.HOUGH_GRADIENT,1,20,
+							param1=50,param2=30,minRadius=0,maxRadius=70)		
 			circles = np.uint16(np.around(circles))
 		
 			print circles
