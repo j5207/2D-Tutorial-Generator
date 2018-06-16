@@ -50,7 +50,7 @@ class object_tracking():
 				for i in np.squeeze(circles): 
 						if i[2] > 5: 
 							self.cir_result[k][-1].append([i[0], i[1], i[2]])
-							cv2.circle(img,(i[0],i[1]),i[2],circle_dic[k][3],2)
+							cv2.circle(img,(i[0],i[1]),6,circle_dic[k][3],2)
 							# draw the center of the circle
 							cv2.circle(img,(i[0],i[1]),3,circle_dic[k][3],3)
 							# cv2.putText(img,k,(i[0],i[1]),cv2.FONT_HERSHEY_SIMPLEX, 1.0, circle_dic[k][3])		
@@ -77,19 +77,23 @@ class object_tracking():
 			ret,mask = cv2.threshold(median,127,255,0)
 			# mask = cv2.dilate(mask, kernal)
 			(_,contours,hierarchy)=cv2.findContours(mask,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
-			for _, contour in enumerate(contours):
-				area = cv2.contourArea(contour)
-				if(area>dic[k][2]):
-					M = cv2.moments(contour)
-					cx = int(M['m10']/M['m00'])
-					cy = int(M['m01']/M['m00'])
-					cv2.circle(img, (cx, cy), 10, dic[k][3], 3)
-					x,y,_,_ = cv2.boundingRect(contour)
-					rect = cv2.minAreaRect(contour)
-					box = np.int0(cv2.boxPoints(rect))
-					self.cnt_result[k].append([box])
-					cv2.drawContours(img,[box],0,dic[k][3],2)
-					cv2.putText(img,k,(x,y),cv2.FONT_HERSHEY_SIMPLEX, 1.0, dic[k][3])
+
+			contour_sizes = [(cv2.contourArea(contour), contour) for contour in contours]
+    		contour = max(contour_sizes, key=lambda x: x[0])[1]
+			
+			# for _, contour in enumerate(contours):
+			area = cv2.contourArea(contour)
+			if(area>dic[k][2]):
+				M = cv2.moments(contour)
+				cx = int(M['m10']/M['m00'])
+				cy = int(M['m01']/M['m00'])
+				cv2.circle(img, (cx, cy), 10, dic[k][3], 3)
+				x,y,_,_ = cv2.boundingRect(contour)
+				rect = cv2.minAreaRect(contour)
+				box = np.int0(cv2.boxPoints(rect))
+				self.cnt_result[k].append([box])
+				cv2.drawContours(img,[box],0,dic[k][3],2)
+				cv2.putText(img,k,(x,y),cv2.FONT_HERSHEY_SIMPLEX, 1.0, dic[k][3])
 		cv2.imshow("Object Tracking",img)
 	
 	def get_result(self): 
