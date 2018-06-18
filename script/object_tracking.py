@@ -77,7 +77,7 @@ class object_tracking():
 			ret,mask = cv2.threshold(median,127,255,0)
 			# mask = cv2.dilate(mask, kernal)
 			(_,contours,hierarchy)=cv2.findContours(mask,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
-			print len(contours)
+			#print len(contours)
 			# try:
 			if len(contours) > 1:
 				contour_sizes = [cv2.contourArea(contour) for contour in contours]
