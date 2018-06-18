@@ -11,7 +11,7 @@ class object_tracking():
 			'red' : [np.array([136,87,111],np.uint8), np.array([180,255,255],np.uint8), 500, (0,0,255)],
 			'blue' : [np.array([113,50,50],np.uint8), np.array([130,255,255],np.uint8), 800, (255,0,0)],
 			'yello' : [np.array([22,60,200],np.uint8), np.array([60,255,255],np.uint8), 500, (0,255,0)],
-			'green' : [np.array([30,19,76],np.uint8), np.array([88,128,162],np.uint8), 500, (0,255,0)],
+			'green' : [np.array([35,5,88],np.uint8), np.array([102,255,255],np.uint8), 500, (0,255,0)],
 		}
 
 		circle_dic = {
