@@ -11,6 +11,7 @@ def paint(cap, cir, cnt, hand_cnt):
 	width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) * SCALAR
 	height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) * SCALAR
 	print width, height
+	count = 0
 
 	suf = np.zeros((height, width, 3), np.uint8)
 	suf[suf == 0] = 255
@@ -28,7 +29,12 @@ def paint(cap, cir, cnt, hand_cnt):
 			logger.error('Failed to upload to ftp: '+ str(e))
 	for k in hand_cnt: 
 		#cnt = hand_cnt[k]
+		print "hand contour:{}".format(np.mean(k[0], axis=1))
 		cv2.drawContours(suf,k,-1,(0, 255, 0), -1)
+		if np.mean(k[0], axis=1) > 580 or np.mean(k[0], axis=1) < 620: 
+			count += 1
+	if count > 200: 
+		suf = np.zeros((height, width, 3), np.uint8)
 	# suf = cv2.resize(suf, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
 	
 	####################set the full screen#######################

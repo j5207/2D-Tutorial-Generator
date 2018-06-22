@@ -6,7 +6,7 @@ class hand_tracking():
         _, frame = cap.read()
         blur = cv2.blur(frame,(3,3))
         hsv = cv2.cvtColor(blur,cv2.COLOR_BGR2HSV)
-        mask2 = cv2.inRange(hsv,np.array([0,101,0]),np.array([10,255,255]))  
+        mask2 = cv2.inRange(hsv,np.array([119,59,37]),np.array([164,255,255]))  
         kernel_square = np.ones((11,11),np.uint8)
         kernel_ellipse= cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(5,5))
 
