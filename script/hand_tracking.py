@@ -9,7 +9,7 @@ class hand_tracking():
         blur = cv2.blur(frame,(3,3))
         hsv = cv2.cvtColor(blur,cv2.COLOR_BGR2HSV)
         kernal = np.ones((3 ,3), "uint8")
-        mask = cv2.inRange(hsv,np.array([123,82,95]),np.array([139,255,255]))
+        mask = cv2.inRange(hsv,np.array([128,38,0]),np.array([139,255,255]))
         mask = cv2.dilate(mask, kernal)
         mask = cv2.GaussianBlur(mask,(1,1),-1)  
         # kernel_square = np.ones((11,11),np.uint8)
@@ -31,7 +31,7 @@ class hand_tracking():
         self.hand_cnt = [] 
         
 
-        max_area=1000
+        max_area=1200
         try:	
             for i in range(len(contours)):
                 cnt=contours[i]
