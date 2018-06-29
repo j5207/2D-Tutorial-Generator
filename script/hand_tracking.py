@@ -133,6 +133,9 @@ class hand_tracking():
         count_text="FINGERS:"+str(finger_count)
         cv2.putText(frame_in,count_text,(int(0.62*frame_in.shape[1]),int(0.88*frame_in.shape[0])),cv2.FONT_HERSHEY_DUPLEX,1,(0,255,255),1,8)
 
+        if finger_count == 1:
+            cv2.putText(frame_in,"pointing",(int(0.38*frame_in.shape[1]),int(0.12*frame_in.shape[0])),cv2.FONT_HERSHEY_DUPLEX,1,(0,255,255),1,8)
+
         for k in range(len(finger)):
             cv2.circle(frame_in,finger[k],10,255,2)
             cv2.line(frame_in,finger[k],(cx,cy),255,2)
