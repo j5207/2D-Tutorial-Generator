@@ -1,3 +1,4 @@
+from __future__ import print_function
 import numpy as np
 import cv2
 import time
@@ -5,70 +6,84 @@ import time
 toarr = lambda x, y, z : np.array([x, y, z], np.uint8)
 mean_ = lambda x : np.sum(x) // np.count_nonzero(x)
 
-cap = cv2.VideoCapture(0)
-fgbg = cv2.createBackgroundSubtractorMOG2()
-kernel = np.ones((7 ,7), "uint8")
-kernel1 = np.ones((3 ,3), "uint8")
-tracker = cv2.TrackerMIL_create()
-sift = cv2.xfeatures2d.SIFT_create()
-while(1):
-    ret, origin = cap.read()
-    # set ROI
-    img = origin[120:360,160:480, :]
-    gray = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
-    ret, thresh = cv2.threshold(gray,0,255,cv2.THRESH_BINARY_INV+cv2.THRESH_OTSU)
-    cv2.rectangle(origin, (160, 120), (480, 360), (0, 255, 0), 1)
-    # background segmentation
-    mog_mask = fgbg.apply(img)
-    # get rid of shadow
-    mog_mask[mog_mask == 127] = 0
-    # subtract glove
-    hsv = cv2.cvtColor(img,cv2.COLOR_BGR2HSV)
-    hsv_mask = cv2.inRange(hsv,np.array([119,59,37]),np.array([164,255,255]))
-    hsv_mask = cv2.dilate(hsv_mask, kernel)
-    cv2.imshow('ggg',hsv_mask)
-    hsv_mask[hsv_mask > 0] = 255
-    mask = cv2.subtract(mog_mask, hsv_mask)
-    res=cv2.bitwise_and(img, img, mask = mask)
-    
-    
+class object_detector():
+	def __init__(self, cap):
+		self.boxls = []
+
+		_, origin = cap.read()
+		#-------------warp the image---------------------#
+		warp = self.warp(origin)
+		#-------------segment the object----------------#
+		hsv = cv2.cvtColor(warp,cv2.COLOR_BGR2HSV)        
+		green_mask = cv2.inRange(hsv, np.array([57,145,0]), np.array([85,255,255]))
+		res=cv2.bitwise_and(warp, warp, mask = green_mask)
+		object_mask = cv2.subtract(warp, res)
+		gray = cv2.cvtColor(object_mask,cv2.COLOR_BGR2GRAY)
+		ret, thresh = cv2.threshold(gray,0,255,cv2.THRESH_BINARY_INV+cv2.THRESH_OTSU)
+		draw_img = warp.copy()
+		#-------------get the bounding box--------------
+		self.get_minRect(draw_img, thresh, only=False)
+		cv2.imshow('green_mask', draw_img)
 
 
-    # hsv_res=cv2.cvtColor(res,cv2.COLOR_BGR2HSV)
-    # hsv_res = cv2.erode(hsv_res,kernel1,iterations = 1)
-    # temp = hsv_res.copy()
+	def get_minRect(self, img, mask, only=True, visualization=True):
+		(_,contours,_)=cv2.findContours(mask,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+		if len(contours) > 0:
+			if only:
+				areas = [cv2.contourArea(c) for c in contours]
+				max_index = np.argmax(areas)
+				contour = contours[max_index]
+				self.boxls.append(contour)
+				hull = cv2.convexHull(contour)
+				rect = cv2.minAreaRect(contour)
+				box = np.int0(cv2.boxPoints(rect))
+				x,y,w,h = cv2.boundingRect(contour)
+				if visualization:
+					cv2.rectangle(img,(x,y),(x+w,y+h),(0,0,255),2)
+			else:
+				count = 1
+				for _, contour in enumerate(contours):
+					area = cv2.contourArea(contour)
+					if area>600 and area < 10000:
+						self.boxls.append(contour)
+						M = cv2.moments(contour)
+						cx = int(M['m10']/M['m00'])
+						cy = int(M['m01']/M['m00'])
+						rect = cv2.minAreaRect(contour)
+						box = np.int0(cv2.boxPoints(rect))
+						x,y,w,h = cv2.boundingRect(contour)
+						if visualization:
+							cv2.circle(img, (cx, cy), 10, (0, 0, 255), 3)
+							cv2.rectangle(img,(x,y),(x+w,y+h),(0,0,255),2)
+							cv2.putText(img,str(count),(x,y),cv2.FONT_HERSHEY_SIMPLEX, 1.0,(0,0,255))
+						count += 1
+		return box
+		
+	def warp(self, img):
+		pts1 = np.float32([[153,120],[536,110],[65,457],[634,457]])
+		pts2 = np.float32([[0,0],[640,0],[0,480],[640,480]])
+		M = cv2.getPerspectiveTransform(pts1,pts2)
+		dst = cv2.warpPerspective(img,M,(640,480))
+		return dst
 
-    # h_low, h_high = mean_(hsv_res[:,:,0]) - 20, mean_(hsv_res[:,:,0]) + 20
-    # s_low, s_high = mean_(hsv_res[:,:,1]), 255
-    # v_low, v_high = mean_(hsv_res[:,:,2]), 255
-    
-   
-    
-    
-    # print h_low, s_low, v_low
-    # # h_low, h_high = np.min(hsv_res[:,:,0]), np.max(hsv_res[:,:,0])
-    # # s_low, s_high = np.min(hsv_res[:,:,1]), np.max(hsv_res[:,:,1])
-    # # v_low, v_high = np.min(hsv_res[:,:,2]), np.max(hsv_res[:,:,2])
-    # # print np.unique(hsv_res)
-    # mask = cv2.inRange(origin, toarr(h_low, s_low, v_low), toarr(h_high, s_high, v_high))
+		
+	@staticmethod
+	def SIFT(I, visualization=True):
+		gray = cv2.cvtColor(I, cv2.COLOR_BGR2GRAY)
+		descriptor = cv2.xfeatures2d.SIFT_create()
+		kps, features = descriptor.detectAndCompute(gray, None)
+		if visualization:
+			cv2.drawKeypoints(I,kps,I,(0,255,255),flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
 
+def main():
+	cap=cv2.VideoCapture(0)
+	sift = cv2.xfeatures2d.SIFT_create()
+	while(1):
+		object_detector(cap)
+		if cv2.waitKey(5) & 0xFF == 27:
+			break
+	cap.release()
+	cv2.destroyAllWindows()
 
-
-    # gray= cv2.cvtColor(res,cv2.COLOR_BGR2GRAY)
-    # kp, = sift.detectAndCompute(gray,None) 
-    # cv2.drawKeypoints(img,kp, img)
-    # draw bounding box
-    (_,contours,hierarchy)=cv2.findContours(mask,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
-    if len(contours) > 0:
-        areas = [cv2.contourArea(c) for c in contours]
-        max_index = np.argmax(areas)
-        contour = contours[max_index]  
-        rect = cv2.minAreaRect(contour)
-        box = np.int0(cv2.boxPoints(rect))
-        cv2.drawContours(img,[box],0,(0,0,255),2)
-    cv2.imshow('img',img)
-    k = cv2.waitKey(30) & 0xff
-    if k == 27:
-        break
-cap.release()
-cv2.destroyAllWindows()
+if __name__ == '__main__':
+	main()
