@@ -8,7 +8,7 @@ toarr = lambda x, y, z : np.array([x, y, z], np.uint8)
 mean_ = lambda x : np.sum(x) // np.count_nonzero(x)
 
 class object_detector():
-	def __init__(self, cap):
+	def __init__(self, cap, save=False):
 		self.boxls = []
 
 		_, origin = cap.read()
@@ -24,7 +24,15 @@ class object_detector():
 		draw_img = warp.copy()
 		#-------------get the bounding box--------------
 		self.get_minRect(draw_img, thresh, only=False)
-		self.get_descriptor(warp)
+		#-------------save descriptor----------------#
+		if save:
+			self.get_descriptor(warp)
+		#-------------retrieve descriptor------------------
+		else:
+			keypoints_database = pickle.load( open( "keypoints_database.p", "rb" ))
+			for i in range(len(keypoints_database)): 
+				kps, desc = self.unpickle_keypoints(keypoints_database[i])
+				#------------------matching------------------
 		cv2.imshow('green_mask', draw_img)
 
 
@@ -109,8 +117,11 @@ class object_detector():
 		pickle.dump(temp_array, open("keypoints_database.p", "wb"))
 			#print("features:{} in {}".format(features, i))
 
+
+
 def main():
 	cap=cv2.VideoCapture(0)
+	object_detector(cap, save=True)
 	while(1):
 		object_detector(cap)
 		if cv2.waitKey(5) & 0xFF == 27:
