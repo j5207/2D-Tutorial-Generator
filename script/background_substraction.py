@@ -7,6 +7,12 @@ import pickle
 toarr = lambda x, y, z : np.array([x, y, z], np.uint8)
 mean_ = lambda x : np.sum(x) // np.count_nonzero(x)
 
+class object_item(): 
+	def __init__(self, box, id): 
+		self.boundbox = box
+		self.id = id
+
+
 class object_detector():
 	def __init__(self, cap, save=False):
 		self.boxls = []
@@ -20,12 +26,15 @@ class object_detector():
 		#-------------segment the object----------------#
 		hsv = cv2.cvtColor(warp,cv2.COLOR_BGR2HSV)        
 		green_mask = cv2.inRange(hsv, np.array([57,145,0]), np.array([85,255,255]))
-		hand_mask = cv2.inRange(hsv, np.array([84,32,0]), np.array([153,255,255]))
-		hand_mask = cv2.dilate(hand_mask, kernel = np.ones((5,5),np.uint8))
-		res=cv2.bitwise_and(warp, warp, mask = green_mask)
+		hand_mask = cv2.inRange(hsv, np.array([118,32,0]), np.array([153,255,255]))
+		hand_mask = cv2.dilate(hand_mask, kernel = np.ones((7,7),np.uint8))
+		skin_mask = cv2.inRange(hsv, np.array([0,52,0]), np.array([56,255,255]))
+		skin_mask = cv2.dilate(skin_mask, kernel = np.ones((5,5),np.uint8))
+		# res=cv2.bitwise_and(warp, warp, mask = green_mask)
 		thresh = 255 - green_mask
 		thresh = cv2.subtract(thresh, hand_mask)
-		# cv2.imshow('res', thresh)
+		thresh = cv2.subtract(thresh, skin_mask)
+		cv2.imshow('res', thresh)
 		# cv2.imshow('res1', hand_mask)
 		# cv2.imshow('res2', object_mask)
 		# object_mask = cv2.subtract(warp, res)
@@ -76,7 +85,7 @@ class object_detector():
 						if visualization:
 							cv2.circle(img, (cx, cy), 10, (0, 0, 255), 3)
 							cv2.rectangle(img,(x,y),(x+w,y+h),(0,0,255),2)
-						# 	cv2.putText(img,str(count),(x,y),cv2.FONT_HERSHEY_SIMPLEX, 1.0,(0,0,255))
+						 	cv2.putText(img,str(count),(x,y),cv2.FONT_HERSHEY_SIMPLEX, 1.0,(0,0,255))
 						# count += 1
 		
 	def warp(self, img):
@@ -146,6 +155,7 @@ class object_detector():
 	
 	def check_descriptor(self, frame, meth): 
 		keypoints_database = pickle.load( open( "keypoints_database.p", "rb" ))
+		temp_ls = []
 		for i in range(len(self.boxls)): 
 			x,y,w,h = cv2.boundingRect(self.boxls[i])
 			temp = frame[y:y+h, x:x+w, :]
@@ -153,7 +163,8 @@ class object_detector():
 			
 			ind = 0
 			temp = 0
-			
+
+			dic = {}
 			for j in range(len(keypoints_database)): 
 				_, des2 = self.unpickle_keypoints(keypoints_database[j])
 
@@ -181,13 +192,16 @@ class object_detector():
 						if m.distance < 0.7*n.distance:
 							goodMatch.append(m)
 					# print(i, j, len(goodMatch))
-					if len(goodMatch) > temp: 
+					if len(goodMatch) > temp and j not in temp_ls: 
 						ind = j
 						temp = len(goodMatch)
-			# ---------------------------visualization---------------------------
-			cv2.rectangle(frame,(x,y),(x+w,y+h),(0,0,255),2)
-			cv2.putText(frame, str(ind),(x+w,y+h),cv2.FONT_HERSHEY_SIMPLEX, 1.0,(0,255,0))
-			
+			if ind not in temp_ls:
+				temp_ls.append(ind)
+				print(temp_ls)
+				# ---------------------------visualization---------------------------
+				cv2.rectangle(frame,(x,y),(x+w,y+h),(0,0,255),2)
+				cv2.putText(frame, str(ind),(x+w,y+h),cv2.FONT_HERSHEY_SIMPLEX, 1.0,(0,255,0))
+				dic[str(ind)] = (x, y, w, h)
 
 
 
