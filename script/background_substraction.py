@@ -26,12 +26,13 @@ class object_detector():
 		self.get_minRect(draw_img, thresh, only=False)
 		#-------------save descriptor----------------#
 		if save:
-			self.get_descriptor(warp)
+			self.get_descriptor(draw_img)
 		#-------------retrieve descriptor------------------
-		else:
-			keypoints_database = pickle.load( open( "keypoints_database.p", "rb" ))
-			for i in range(len(keypoints_database)): 
-				kps, desc = self.unpickle_keypoints(keypoints_database[i])
+		else: 
+			self.check_descriptor(draw_img)
+			# keypoints_database = pickle.load( open( "keypoints_database.p", "rb" ))
+			# for i in range(len(keypoints_database)): 
+			# 	kps, desc = self.unpickle_keypoints(keypoints_database[i])
 				#------------------matching------------------
 		cv2.imshow('green_mask', draw_img)
 
@@ -50,8 +51,8 @@ class object_detector():
 				x,y,w,h = cv2.boundingRect(contour)
 				if visualization:
 					cv2.rectangle(img,(x,y),(x+w,y+h),(0,0,255),2)
-			else:
-				count = 1
+			else: 
+				# count = 1
 				for _, contour in enumerate(contours):
 					area = cv2.contourArea(contour)
 					if area>600 and area < 10000:
@@ -65,8 +66,8 @@ class object_detector():
 						if visualization:
 							cv2.circle(img, (cx, cy), 10, (0, 0, 255), 3)
 							cv2.rectangle(img,(x,y),(x+w,y+h),(0,0,255),2)
-							cv2.putText(img,str(count),(x,y),cv2.FONT_HERSHEY_SIMPLEX, 1.0,(0,0,255))
-						count += 1
+						# 	cv2.putText(img,str(count),(x,y),cv2.FONT_HERSHEY_SIMPLEX, 1.0,(0,0,255))
+						# count += 1
 		return box
 		
 	def warp(self, img):
@@ -87,8 +88,8 @@ class object_detector():
 		return kps, features
 
 	@staticmethod
-	def pickle_keypoints(keypoints, descriptors, temp_array):
-		i = 0
+	def pickle_keypoints(keypoints, descriptors):
+		temp_array = []
 		for i, point in enumerate(keypoints):
 			temp = (point.pt, point.size, point.angle, point.response, point.octave,
 			point.class_id, descriptors[i])
@@ -99,7 +100,7 @@ class object_detector():
 	def unpickle_keypoints(array):
 		keypoints = []
 		descriptors = []
-		for point in array:
+		for point in array: 
 			temp_feature = cv2.KeyPoint(x=point[0][0],y=point[0][1],_size=point[1], _angle=point[2], _response=point[3], _octave=point[4], _class_id=point[5])
 			temp_descriptor = point[6]
 			keypoints.append(temp_feature)
@@ -112,10 +113,47 @@ class object_detector():
 			x,y,w,h = cv2.boundingRect(self.boxls[i])
 			temp = frame[y:y+h, x:x+w, :]
 			kps, features = self.SIFT(temp)
-			temp_array = self.pickle_keypoints(kps, features, temp_array)
-			cv2.imshow(str(i), temp)
+			temp_array.append(self.pickle_keypoints(kps, features))
+			#cv2.imshow(str(i), temp)
 		pickle.dump(temp_array, open("keypoints_database.p", "wb"))
 			#print("features:{} in {}".format(features, i))
+	
+	def check_descriptor(self, frame): 
+		keypoints_database = pickle.load( open( "keypoints_database.p", "rb" ))
+		for i in range(len(self.boxls)): 
+			x,y,w,h = cv2.boundingRect(self.boxls[i])
+			temp = frame[y:y+h, x:x+w, :]
+			_, des1 = self.SIFT(temp)
+			
+			ind = 0
+			temp = 0
+			
+			for j in range(len(keypoints_database)): 
+				_, des2 = self.unpickle_keypoints(keypoints_database[j])
+				# FLANN parameters
+				FLANN_INDEX_KDTREE = 0
+				index_params = dict(algorithm = FLANN_INDEX_KDTREE, trees = 5)
+				search_params = dict(checks=50)   # or pass empty dictionary
+
+				flann = cv2.FlannBasedMatcher(index_params,search_params)
+
+				matches = flann.knnMatch(des1,des2,k=2)
+				print(i, j, len(matches))
+
+				goodMatch=[]
+
+				# ratio test as per Lowe's paper
+				for k,(m,n) in enumerate(matches):
+					if m.distance < 0.75*n.distance:
+						goodMatch.append(m)
+
+				if len(goodMatch) > temp: 
+					ind = j
+					temp = len(goodMatch)
+				# print(ind, temp)
+			cv2.putText(frame, str(ind),(x,y),cv2.FONT_HERSHEY_SIMPLEX, 1.0,(0,0,255))
+			
+
 
 
 
