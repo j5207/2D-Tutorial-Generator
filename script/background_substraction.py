@@ -84,24 +84,25 @@ class object_detector():
 				count = 1
 				for _, contour in enumerate(contours):
 					area = cv2.contourArea(contour)
-					if area>600 and area < 10000:
-						self.boxls.append(contour)
+					if area>600 and area < 10000:					
 						M = cv2.moments(contour)
 						cx = int(M['m10']/M['m00'])
 						cy = int(M['m01']/M['m00'])
 						rect = cv2.minAreaRect(contour)
 						box = np.int0(cv2.boxPoints(rect))
 						x,y,w,h = cv2.boundingRect(contour)
-						if visualization:
-							cv2.circle(img, (cx, cy), 10, (0, 0, 255), 3)
-							cv2.rectangle(img,(x,y),(x+w,y+h),(0,0,255),2)
-						 	cv2.putText(img,str(count),(x,y),cv2.FONT_HERSHEY_SIMPLEX, 1.0,(0,0,255))
-							cv2.imshow('img', img)
-						count += 1
+						self.boxls.append([x, y, w, h])
+				#---------------sorting the list according to the x coordinate of each item
 				boxls_arr = np.array(self.boxls)
-				print(len(self.boxls))
-				print(boxls_arr.shape)
 				self.boxls = boxls_arr[boxls_arr[:, 0].argsort()].tolist()
+				for i in range(len(self.boxls)): 
+					if visualization: 
+						x,y,w,h = self.boxls[i]
+						cv2.rectangle(img,(x,y),(x+w,y+h),(0,0,255),2)
+						cv2.putText(img,str(i+1),(x,y),cv2.FONT_HERSHEY_SIMPLEX, 1.0,(0,0,255))
+						cv2.imshow('img', img)
+						count += 1
+
 
 	def warp(self, img):
 		pts1 = np.float32([[115,124],[520,112],[2,476],[640,480]])
@@ -113,7 +114,7 @@ class object_detector():
 	def get_descriptor(self, frame, meth):
 		temp_array = []
 		for i in range(len(self.boxls)):
-			x,y,w,h = cv2.boundingRect(self.boxls[i])
+			x,y,w,h = self.boxls[i]
 			temp = frame[y:y+h, x:x+w, :]
 			kps, features = self.detect(temp, method=meth)
 			temp_array.append(self.pickle_keypoints(kps, features))
@@ -124,7 +125,7 @@ class object_detector():
 		keypoints_database = pickle.load( open( "keypoints_database.p", "rb" ))
 		occupy_ls = []
 		for i in range(len(self.boxls)):
-			x,y,w,h = cv2.boundingRect(self.boxls[i])
+			x,y,w,h = self.boxls[i]
 			temp = frame[y:y+h, x:x+w, :]
 			_, des1 = self.detect(temp, method=meth)
 
@@ -173,7 +174,7 @@ class object_detector():
 		num_object = len(self.boxls)
 		#-------------capturing img for each of item--------------#
 		for i in range(num_object):
-			x,y,w,h = cv2.boundingRect(self.boxls[i])
+			x,y,w,h = self.boxls[i]
 			temp = frame[y:y+h, x:x+w, :]
 			_, features = self.detect(temp)
 			self.cloud_des.append(features)
