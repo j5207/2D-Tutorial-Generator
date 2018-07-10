@@ -20,11 +20,11 @@ class object_item():
 
 
 class object_detector():
-	def __init__(self, cap, save=False, train=False):
+	def __init__(self, cap, start, save=False, train=False):
 		self.boxls = []
 		self.cloud_des = []
 		self.cloud_des_new = []
-		self.start_time = time.time()
+		self.start_time = start
 		self.collect_count = 0
 		stored_flag = False
 		_, origin = cap.read()
@@ -51,7 +51,7 @@ class object_detector():
 		self.get_minRect(draw_img, thresh, only=False, visualization=True)
 		#--------------get bags of words and training-------#
 		if not stored_flag:
-			self.store(30.0)
+			stored_flag = self.store(10.0)
 		else: 
 			self.train()
 
@@ -81,7 +81,6 @@ class object_detector():
 				if visualization:
 					cv2.rectangle(img,(x,y),(x+w,y+h))
 			else:
-				count = 1
 				for _, contour in enumerate(contours):
 					area = cv2.contourArea(contour)
 					if area>600 and area < 10000:					
@@ -101,7 +100,6 @@ class object_detector():
 						cv2.rectangle(img,(x,y),(x+w,y+h),(0,0,255),2)
 						cv2.putText(img,str(i+1),(x,y),cv2.FONT_HERSHEY_SIMPLEX, 1.0,(0,0,255))
 						cv2.imshow('img', img)
-						count += 1
 
 
 	def warp(self, img):
@@ -180,14 +178,14 @@ class object_detector():
 			self.cloud_des.append(features)
 		self.collect_count += 1
 		if time.time() - self.start_time < store_time: 
-			#print('still collecting--------')
+			print('still collecting--------')
 			return False
 		else:
 			for i in range(num_object):
 				temp_mask = [i for i in range(0, len(self.cloud_des), num_object)]
 				temp = np.asarray(self.cloud_des)[np.asarray(temp_mask)].tolist()
 				self.cloud_des_new.append(temp)
-			#print('finish collecting')
+			print('finish collecting')
 			return True
 
 	def train(self):
@@ -218,8 +216,10 @@ class object_detector():
 			for i in range(im_features.shape[0]):
 				bow.append(im_features[i])
 		#------------------------training------------------------#
+		print('start training')
 		clf = svm.SVC(decision_function_shape='ovo')
 		clf.fit(bow, label)
+		print("complete fit")
 
 
 
@@ -283,8 +283,9 @@ class object_detector():
 def main():
 	cap=cv2.VideoCapture(0)
 	# object_detector(cap, save=True)
+	start_time = time.time()
 	while(1):
-		object_detector(cap, save=True)
+		object_detector(cap, save=True, start=start_time)
 		if cv2.waitKey(5) & 0xFF == 27:
 			break
 	cap.release()
