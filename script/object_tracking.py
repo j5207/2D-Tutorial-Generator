@@ -11,7 +11,7 @@ class object_tracking():
 			'red' : [np.array([136,87,111],np.uint8), np.array([180,255,255],np.uint8), 500, (0,0,255)],
 			'blue' : [np.array([113,50,50],np.uint8), np.array([130,255,255],np.uint8), 800, (255,0,0)],
 			'yello' : [np.array([22,60,200],np.uint8), np.array([60,255,255],np.uint8), 500, (0,255,0)],
-			'green' : [np.array([30,19,76],np.uint8), np.array([88,128,162],np.uint8), 500, (0,255,0)],
+			'green' : [np.array([35,5,88],np.uint8), np.array([102,255,255],np.uint8), 500, (0,255,0)],
 		}
 
 		circle_dic = {
@@ -50,9 +50,9 @@ class object_tracking():
 				for i in np.squeeze(circles): 
 						if i[2] > 5: 
 							self.cir_result[k][-1].append([i[0], i[1], i[2]])
-							cv2.circle(img,(i[0],i[1]),i[2],circle_dic[k][3],2)
+							cv2.circle(img,(i[0],i[1]),10,circle_dic[k][3],2)
 							# draw the center of the circle
-							cv2.circle(img,(i[0],i[1]),3,circle_dic[k][3],3)
+							#cv2.circle(img,(i[0],i[1]),3,circle_dic[k][3],3)
 							# cv2.putText(img,k,(i[0],i[1]),cv2.FONT_HERSHEY_SIMPLEX, 1.0, circle_dic[k][3])		
 							# draw the center of the circle
 							# cv2.circle(img,(i[0],i[1]),3,circle_dic[k][3],3)
@@ -77,9 +77,17 @@ class object_tracking():
 			ret,mask = cv2.threshold(median,127,255,0)
 			# mask = cv2.dilate(mask, kernal)
 			(_,contours,hierarchy)=cv2.findContours(mask,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+			#print len(contours)
+			# try:
+			if len(contours) > 1:
+				contour_sizes = [cv2.contourArea(contour) for contour in contours]
+				max_id = np.argmax(contour_sizes)
+				contours = contours[max_id]
+				#print contour_sizes
+			
 			for _, contour in enumerate(contours):
 				area = cv2.contourArea(contour)
-				if(area>dic[k][2]):
+				if(area>0):
 					M = cv2.moments(contour)
 					cx = int(M['m10']/M['m00'])
 					cy = int(M['m01']/M['m00'])

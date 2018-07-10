@@ -4,25 +4,45 @@ from hand_tracking import hand_tracking
 import numpy as np
 import logging
 
+SCALAR = 1
+
 def paint(cap, cir, cnt, hand_cnt): 
 	logger = logging.getLogger('ftpuploader')
-	width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-	height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+	width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) * SCALAR
+	height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) * SCALAR
+	print width, height
+	count = 0
+
 	suf = np.zeros((height, width, 3), np.uint8)
+	suf[suf == 0] = 255
 
 	for k in cir: 
 		color, circle = cir[k]
 		for c in circle: 
-			cv2.circle(suf,(c[0],c[1]),c[2],color,-1)
-		for k in cnt: 
-			try:
-				color = cnt[k][0]
-				contour = cnt[k][1]
-				cv2.drawContours(suf,contour,0,color,-1)
-			except Exception, e:
-				logger.error('Failed to upload to ftp: '+ str(e))
-		
-		cv2.imshow('surface', suf)
+			cv2.circle(suf,(c[0] * SCALAR ,c[1] * SCALAR), 10, color,-1)
+	for k in cnt: 
+		try:
+			color = cnt[k][0]
+			contour = cnt[k][1][0] * SCALAR
+			cv2.drawContours(suf,[contour],0,color,-1)
+		except Exception, e:
+			logger.error('Failed to upload to ftp: '+ str(e))
+	for k in hand_cnt: 
+		#cnt = hand_cnt[k]
+		print "hand contour:{}".format(np.mean(k[0], axis=1))
+		cv2.drawContours(suf,k,-1,(0, 255, 0), -1)
+		if np.mean(k[0], axis=1) > 580 or np.mean(k[0], axis=1) < 620: 
+			count += 1
+	if count > 200: 
+		suf = np.zeros((height, width, 3), np.uint8)
+	# suf = cv2.resize(suf, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+	
+	####################set the full screen#######################
+	# cv2.namedWindow("surface", cv2.WND_PROP_FULLSCREEN)
+	# cv2.setWindowProperty("surface",cv2.WND_PROP_FULLSCREEN,cv2.WINDOW_FULLSCREEN)
+
+	cv2.imshow('surface', suf)
+	#print suf
 
 def main(): 
 	
