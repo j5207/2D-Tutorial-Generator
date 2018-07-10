@@ -13,25 +13,23 @@ import time
 toarr = lambda x, y, z : np.array([x, y, z], np.uint8)
 mean_ = lambda x : np.sum(x) // np.count_nonzero(x)
 
-class object_item():
-	def __init__(self, box, id):
-		self.boundbox = box
-		self.id = id
 
+class object_detector(): 
+	def __init__(self, start): 		
+		self.start_time = start
+		self.stored_flag = False
+		self.trained_flag = False
 
-class object_detector():
-	def __init__(self, cap, start, save=False, train=False):
+	def update(self, cap, save=False, train=False):
 		self.boxls = []
 		self.cloud_des = []
 		self.cloud_des_new = []
-		self.start_time = start
 		self.collect_count = 0
-		stored_flag = False
 		_, origin = cap.read()
 		rect = self.camrectify(origin)
 
 		#-------------warp the image---------------------#
-		warp = self.warp(origin)
+		warp = self.warp(rect)
 		#-------------segment the object----------------#
 		hsv = cv2.cvtColor(warp,cv2.COLOR_BGR2HSV)
 		green_mask = cv2.inRange(hsv, np.array([57,145,0]), np.array([85,255,255]))
@@ -50,10 +48,10 @@ class object_detector():
 		#-------------get the bounding box--------------
 		self.get_minRect(draw_img, thresh, only=False, visualization=True)
 		#--------------get bags of words and training-------#
-		if not stored_flag:
-			stored_flag = self.store(10.0)
-		else: 
-			self.train()
+		if not self.stored_flag:
+			self.stored_flag = self.store(0.1)
+		if self.stored_flag and not self.trained_flag: 
+			self.trained_flag = self.train()
 
 
 		#-------------save descriptor----------------#
@@ -98,7 +96,7 @@ class object_detector():
 					if visualization: 
 						x,y,w,h = self.boxls[i]
 						cv2.rectangle(img,(x,y),(x+w,y+h),(0,0,255),2)
-						cv2.putText(img,str(i+1),(x,y),cv2.FONT_HERSHEY_SIMPLEX, 1.0,(0,0,255))
+						cv2.putText(img,str(i),(x,y),cv2.FONT_HERSHEY_SIMPLEX, 1.0,(0,0,255))
 						cv2.imshow('img', img)
 
 
@@ -180,23 +178,43 @@ class object_detector():
 		if time.time() - self.start_time < store_time: 
 			print('still collecting--------')
 			return False
-		else:
-			for i in range(num_object):
-				temp_mask = [i for i in range(0, len(self.cloud_des), num_object)]
-				temp = np.asarray(self.cloud_des)[np.asarray(temp_mask)].tolist()
-				self.cloud_des_new.append(temp)
+		else: 
+			if len(self.cloud_des) == num_object: 
+				for i in range(num_object): 
+					self.cloud_des_new.append([self.cloud_des[i]])
+
+			else: 
+				for i in range(num_object):
+					temp_mask = [i for i in range(0, len(self.cloud_des), num_object)]
+					temp = np.asarray(self.cloud_des)[np.asarray(temp_mask)].tolist()
+					self.cloud_des_new.append(temp)
 			print('finish collecting')
+			print(len(self.cloud_des), num_object)
+			print(self.cloud_des[0].shape)
+			print(self.cloud_des[1].shape)
+			print(self.cloud_des[2].shape)
+			print(self.cloud_des[3].shape)
+			print(self.cloud_des[4].shape)
+			print(self.cloud_des[5].shape)
+			print('########################################################################')
+			# print(self.cloud_des_new[0].shape)
+			# print(self.cloud_des_new[1].shape)
+			# print(self.cloud_des_new[2].shape)
+			# print(self.cloud_des_new[3].shape)
+			# print(self.cloud_des_new[4].shape)
+			# print(self.cloud_des_new[5].shape)
 			return True
 
 	def train(self):
 		cloud_des = self.cloud_des_new
+		print(len(self.cloud_des_new))
 		label = []
 		bow = []
 		#--------------create labels----------------------------#
 		for i in range(len(cloud_des)):
 			for j in range(len(cloud_des[i])):
 				label.append(i)
-
+		print(label)
 		for i in range(len(cloud_des)):
 			num_img = len(cloud_des[i])
 			#------------create des as descriptor matrix--------#
@@ -204,13 +222,14 @@ class object_detector():
 			for j in range(1, num_img):
 				des = np.vstack((des, cloud_des[i][j]))
 			#-----------create bag of words-----------------#
-			k = 100
+			k = 5
+			print(des.shape)
 			voc, _ = kmeans(des, k, 1)
 			im_features = np.zeros((num_img, k), "float32")
 			for j in range(num_img):
-				words, _ = vq(cloud_des[j][1],voc)
+				words, _ = vq(cloud_des[j][0],voc)
 				for w in words:
-	   	 			im_features[j][w] += 1
+					im_features[j][w] += 1
 			stdSlr = StandardScaler().fit(im_features)
 			im_features = stdSlr.transform(im_features)
 			for i in range(im_features.shape[0]):
@@ -218,8 +237,11 @@ class object_detector():
 		#------------------------training------------------------#
 		print('start training')
 		clf = svm.SVC(decision_function_shape='ovo')
+		# print(bow)
+		# print(label)
 		clf.fit(bow, label)
 		print("complete fit")
+		return True
 
 
 
@@ -284,8 +306,9 @@ def main():
 	cap=cv2.VideoCapture(0)
 	# object_detector(cap, save=True)
 	start_time = time.time()
+	detector = object_detector(start_time)
 	while(1):
-		object_detector(cap, save=True, start=start_time)
+		detector.update(cap, save=True)
 		if cv2.waitKey(5) & 0xFF == 27:
 			break
 	cap.release()
