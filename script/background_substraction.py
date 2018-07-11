@@ -19,10 +19,14 @@ class object_detector():
 		self.start_time = start
 		self.stored_flag = False
 		self.trained_flag = False
+		self.boxls = None
+		self.cloud_des = []
+		self.cloud_des_new = None
+		self.collect_count = None
 
 	def update(self, cap, save=False, train=False):
 		self.boxls = []
-		self.cloud_des = []
+		# self.cloud_des = []
 		self.cloud_des_new = []
 		self.collect_count = 0
 		_, origin = cap.read()
@@ -49,9 +53,11 @@ class object_detector():
 		self.get_minRect(draw_img, thresh, only=False, visualization=True)
 		#--------------get bags of words and training-------#
 		if not self.stored_flag:
-			self.stored_flag = self.store(0.1)
+			self.stored_flag = self.store(10.0)
 		if self.stored_flag and not self.trained_flag: 
 			self.trained_flag = self.train()
+		if self.trained_flag: 
+			self.predict()
 
 
 		#-------------save descriptor----------------#
@@ -90,14 +96,15 @@ class object_detector():
 						x,y,w,h = cv2.boundingRect(contour)
 						self.boxls.append([x, y, w, h])
 				#---------------sorting the list according to the x coordinate of each item
-				boxls_arr = np.array(self.boxls)
-				self.boxls = boxls_arr[boxls_arr[:, 0].argsort()].tolist()
+				if len(self.boxls) > 0:
+					boxls_arr = np.array(self.boxls)
+					self.boxls = boxls_arr[boxls_arr[:, 0].argsort()].tolist()
 				for i in range(len(self.boxls)): 
 					if visualization: 
 						x,y,w,h = self.boxls[i]
 						cv2.rectangle(img,(x,y),(x+w,y+h),(0,0,255),2)
 						cv2.putText(img,str(i),(x,y),cv2.FONT_HERSHEY_SIMPLEX, 1.0,(0,0,255))
-						cv2.imshow('img', img)
+		cv2.imshow('img', img)
 
 
 	def warp(self, img):
@@ -185,36 +192,22 @@ class object_detector():
 
 			else: 
 				for i in range(num_object):
-					temp_mask = [i for i in range(0, len(self.cloud_des), num_object)]
+					temp_mask = [k for k in range(i, len(self.cloud_des), num_object)]
+					print('temp_mask', temp_mask)
 					temp = np.asarray(self.cloud_des)[np.asarray(temp_mask)].tolist()
 					self.cloud_des_new.append(temp)
 			print('finish collecting')
-			print(len(self.cloud_des), num_object)
-			print(self.cloud_des[0].shape)
-			print(self.cloud_des[1].shape)
-			print(self.cloud_des[2].shape)
-			print(self.cloud_des[3].shape)
-			print(self.cloud_des[4].shape)
-			print(self.cloud_des[5].shape)
-			print('########################################################################')
-			# print(self.cloud_des_new[0].shape)
-			# print(self.cloud_des_new[1].shape)
-			# print(self.cloud_des_new[2].shape)
-			# print(self.cloud_des_new[3].shape)
-			# print(self.cloud_des_new[4].shape)
-			# print(self.cloud_des_new[5].shape)
 			return True
 
 	def train(self):
 		cloud_des = self.cloud_des_new
-		print(len(self.cloud_des_new))
+		#print(len(self.cloud_des_new))
 		label = []
 		bow = []
 		#--------------create labels----------------------------#
 		for i in range(len(cloud_des)):
 			for j in range(len(cloud_des[i])):
 				label.append(i)
-		print(label)
 		for i in range(len(cloud_des)):
 			num_img = len(cloud_des[i])
 			#------------create des as descriptor matrix--------#
@@ -223,25 +216,47 @@ class object_detector():
 				des = np.vstack((des, cloud_des[i][j]))
 			#-----------create bag of words-----------------#
 			k = 5
-			print(des.shape)
 			voc, _ = kmeans(des, k, 1)
-			im_features = np.zeros((num_img, k), "float32")
+			im_features = np.zeros((num_img, k), "float64")
 			for j in range(num_img):
-				words, _ = vq(cloud_des[j][0],voc)
+				words, _ = vq(cloud_des[i][j],voc)
 				for w in words:
 					im_features[j][w] += 1
 			stdSlr = StandardScaler().fit(im_features)
 			im_features = stdSlr.transform(im_features)
+
 			for i in range(im_features.shape[0]):
 				bow.append(im_features[i])
 		#------------------------training------------------------#
 		print('start training')
 		clf = svm.SVC(decision_function_shape='ovo')
-		# print(bow)
-		# print(label)
 		clf.fit(bow, label)
 		print("complete fit")
+		joblib.dump((clf, stdSlr, k, voc), "bof.pkl", compress=3)    
 		return True
+
+	def predict(self): 
+		num_object = len(self.boxls) 
+		clf, stdSlr, k, voc = joblib.load("bof.pkl")
+		frame = self.train_img
+		test_features = np.zeros((num_object, k), "float32")
+		for i in range(num_object):
+			x,y,w,h = self.boxls[i]
+			temp = frame[y:y+h, x:x+w, :]
+			_, des1 = self.detect(temp)
+			stdSlr = StandardScaler().fit(test_features)
+			test_features = stdSlr.transform(test_features)
+			result = clf.predict(test_features)
+			print(result)
+			try:
+				words, _ = vq(des1,voc)
+				for w in words:
+					test_features[i][w] += 1
+			except Exception: 
+				print(Exception)
+			
+		
+		
 
 
 
