@@ -45,6 +45,7 @@ class Net(nn.Module):
     def forward(self, x):
         x = F.relu(F.max_pool2d(self.conv1(x), 2))
         x = F.relu(F.max_pool2d(F.dropout2d(self.conv2(x)), 2))
+        print(x.size())
         x = x.view(-1, 320)
         x = F.relu(self.fc1(x))
         x = self.fc2(x)
@@ -206,7 +207,7 @@ class object_detector():
             net.load_state_dict(torch.load(f=self.path + 'model'))
             num_object = len(self.boxls)
             frame = self.train_img
-            preprocess = transforms.Compose([transforms.Scale((28, 28)),
+            preprocess = transforms.Compose([transforms.Scale((200, 100)),
                                                         transforms.ToTensor()])
             for i in range(num_object):
                 x,y,w,h = self.boxls[i]
