@@ -13,42 +13,33 @@ import torch
 from PIL import Image
 from torchvision import transforms
 from torch.autograd import Variable
+import random
 
-
-# class Net(nn.Module):
-#     def __init__(self):
-#         super(Net, self).__init__()
-#         self.conv1 = nn.Conv2d(3, 6, 5)
-#         self.pool = nn.MaxPool2d(2, 2)
-#         self.conv2 = nn.Conv2d(6, 16, 5)
-#         self.fc1 = nn.Linear(320, 120)
-#         self.fc2 = nn.Linear(120, 84)
-#         self.fc3 = nn.Linear(84, 10)
-#     def forward(self, x):
-#         x = self.pool(F.relu(self.conv1(x)))
-#         x = self.pool(F.relu(self.conv2(x)))
-#         print(x.shape)
-#         x = x.view(-1,320)
-#         x = F.relu(self.fc1(x))
-#         x = F.relu(self.fc2(x))
-#         x = self.fc3(x)
-#         return F.softmax(x, dim=1)
+LR = 0.0005
+BATCH_SIZE = 4
+GPU = True
+COLLECT_TIME = 50.0
+AUGMENT = True
+EPOTH = 100
+ONLY_TEST = True
 
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
         self.conv1 = nn.Conv2d(3, 10, kernel_size=5)
         self.conv2 = nn.Conv2d(10, 20, kernel_size=5)
-        self.fc1 = nn.Linear(320, 50)
-        self.fc2 = nn.Linear(50, 10)
+        self.fc1 = nn.Linear(20*47*22, 100)
+        self.fc2 = nn.Linear(100, 50)
+        self.fc3 = nn.Linear(50, 10)
 
     def forward(self, x):
         x = F.relu(F.max_pool2d(self.conv1(x), 2))
         x = F.relu(F.max_pool2d(F.dropout2d(self.conv2(x)), 2))
-        print(x.size())
-        x = x.view(-1, 320)
+        #print(x.size())
+        x = x.view(-1, 20*47*22)
         x = F.relu(self.fc1(x))
-        x = self.fc2(x)
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)
         return F.softmax(x, dim=1)
 
 class CovnetDataset(Dataset):
@@ -61,6 +52,18 @@ class CovnetDataset(Dataset):
         img1 = Image.open(img1_dir)
         label = float(image_tuple[1])
         result = torch.from_numpy(np.array([label], dtype=float))
+
+        if AUGMENT:
+            rotate_range = random.uniform(-180, 180)
+            translation_range = random.uniform(-10, 10)
+            scale_range = random.uniform(0.7, 1.3)
+            # if np.random.random() < 0.7:
+            if True:
+                img1 = img1.rotate(rotate_range)
+            if np.random.random() < 0.7:
+                 img1 = img1.transform((img1.size[0], img1.size[1]), Image.AFFINE, (1, 0, translation_range, 0, 1, translation_range))
+            if np.random.random() < 0.7:
+                img1 = img1.transpose(Image.FLIP_LEFT_RIGHT)
         img1 = self.transform(img1)
         return (img1, result)
     def __len__(self):
@@ -96,17 +99,26 @@ class object_detector():
         thresh = cv2.subtract(thresh, hand_mask)
         thresh = cv2.subtract(thresh, skin_mask)
 
-        draw_img = warp.copy()
+        draw_img1 = warp.copy()
+        draw_img2 = warp.copy()
         self.train_img = warp.copy()
         #-------------get the bounding box--------------
-        self.get_minRect(draw_img, thresh, only=False, visualization=True)
+        self.get_minRect(draw_img1, thresh, only=False, visualization=True)
         #--------------get bags of words and training-------#
-        if not self.stored_flag:
-            self.stored_flag = self.store(2.0)
-        if self.stored_flag and not self.trained_flag: 
-            self.trained_flag = self.train()
-        if self.trained_flag: 
-            self.train(is_train=False)
+        if not ONLY_TEST:
+            if not self.stored_flag:
+                cv2.imshow('store', draw_img1)
+                self.stored_flag = self.store(COLLECT_TIME)
+            if self.stored_flag and not self.trained_flag: 
+                cv2.destroyWindow('store')
+                self.trained_flag = self.train()
+            if self.trained_flag: 
+                self.train(draw_img2, is_train=False)
+                cv2.imshow('track', draw_img2)
+        else:
+            self.train(draw_img2, is_train=False)
+            cv2.imshow('track', draw_img2)
+        
 
     def get_minRect(self, img, mask, only=True, visualization=True):
         (_,contours,_)=cv2.findContours(mask,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
@@ -130,7 +142,6 @@ class object_detector():
                     x,y,w,h = self.boxls[i]
                     cv2.rectangle(img,(x,y),(x+w,y+h),(0,0,255),2)
                     cv2.putText(img,str(i),(x,y),cv2.FONT_HERSHEY_SIMPLEX, 1.0,(0,0,255))
-        cv2.imshow('img', img)
 
 
     def warp(self, img):
@@ -161,24 +172,28 @@ class object_detector():
             print('finish output')
             return True
     
-    def train(self, is_train=True):
-        net = Net()
+    def train(self, draw_img=None, is_train=True):
+        if not GPU:
+            net = Net()
+        else:
+            net = Net().cuda()
         criterion = nn.CrossEntropyLoss()
-        optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
+        optimizer = optim.SGD(net.parameters(), lr=LR, momentum=0.9)
         reader_train = self.reader(self.path, "read.txt")
-        trainset = CovnetDataset(reader=reader_train, transforms=transforms.Compose([transforms.Scale((28, 28)),
+        trainset = CovnetDataset(reader=reader_train, transforms=transforms.Compose([transforms.Scale((200, 100)),
                                                                                             transforms.ToTensor()
                                                                                        ]))
-        trainloader = DataLoader(dataset=trainset, batch_size=4, shuffle=True, num_workers=2)
+        trainloader = DataLoader(dataset=trainset, batch_size=BATCH_SIZE, shuffle=True, num_workers=2)
         #cuda0 = torch.device('cuda:0')
         if is_train:
-            for epoch in range(200):  # loop over the dataset multiple times
+            for epoch in range(EPOTH):  # loop over the dataset multiple times
                 running_loss = 0.0
                 i = 0
                 for data in trainloader:
                     # get the inputs
                     inputs, labels = data
-                    inputs, labels = inputs, labels
+                    if GPU:
+                        inputs, labels = inputs.cuda(), labels.cuda()
                     # print(inputs)
                     inputs, labels = Variable(inputs), Variable(labels.long())
                     # print(inputs)
@@ -216,9 +231,10 @@ class object_detector():
                 image = Image.fromarray(temp)
                 img_tensor = preprocess(image)
                 img_tensor.unsqueeze_(0)
-                img_variable = Variable(img_tensor)
-                out = np.argmax(net(img_variable).data.numpy()[0])
-                print("{}th, out:{}".format(i, out))
+                img_variable = Variable(img_tensor).cuda()
+                out = np.argmax(net(img_variable).cpu().data.numpy()[0])
+                cv2.rectangle(draw_img,(x,y),(x+w,y+h),(0,0,255),2)
+                cv2.putText(draw_img,str(out),(x,y),cv2.FONT_HERSHEY_SIMPLEX, 1.0,(0,0,255))
             
 
         
