@@ -14,6 +14,7 @@ from PIL import Image
 from torchvision import transforms
 from torch.autograd import Variable
 import random
+import tqdm
 
 LR = 0.0005
 BATCH_SIZE = 4
@@ -35,7 +36,6 @@ class Net(nn.Module):
     def forward(self, x):
         x = F.relu(F.max_pool2d(self.conv1(x), 2))
         x = F.relu(F.max_pool2d(F.dropout2d(self.conv2(x)), 2))
-        #print(x.size())
         x = x.view(-1, 20*47*22)
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
@@ -57,13 +57,22 @@ class CovnetDataset(Dataset):
             rotate_range = random.uniform(-180, 180)
             translation_range = random.uniform(-10, 10)
             scale_range = random.uniform(0.7, 1.3)
-            # if np.random.random() < 0.7:
             if True:
                 img1 = img1.rotate(rotate_range)
             if np.random.random() < 0.7:
                  img1 = img1.transform((img1.size[0], img1.size[1]), Image.AFFINE, (1, 0, translation_range, 0, 1, translation_range))
-            if np.random.random() < 0.7:
+            if np.random.random() < 0.5:
                 img1 = img1.transpose(Image.FLIP_LEFT_RIGHT)
+            if np.random.random() < 0.5:
+                img1 = img1.transpose(Image.FLIP_TOP_BOTTOM)
+            if np.random.random() < 0.7:
+                img1 = img1.resize((int(200 * scale_range), int(100 * scale_range)))
+                half_the_width = img1.size[0] / 2
+                half_the_height = img1.size[1] / 2
+                img1 = img1.crop((half_the_width - 100,
+                        half_the_height - 100,
+                        half_the_width + 50,
+                        half_the_height + 50))
         img1 = self.transform(img1)
         return (img1, result)
     def __len__(self):
@@ -78,6 +87,7 @@ class object_detector():
         self.count = 1
         self.path = "/home/intuitivecompting/Desktop/color/Smart-Projector/script/datasets/"
         self.file = open(self.path + "read.txt", "w")
+        self.tracker = cv2.TrackerKCF_create()
 
     def update(self, cap, save=False, train=False):
         self.boxls = []
@@ -98,12 +108,13 @@ class object_detector():
         thresh = 255 - green_mask
         thresh = cv2.subtract(thresh, hand_mask)
         thresh = cv2.subtract(thresh, skin_mask)
-
+        #thresh = cv2.erode(thresh, kernel = np.ones((5,5),np.uint8))
+        #cv2.imshow('thresh', thresh)
         draw_img1 = warp.copy()
         draw_img2 = warp.copy()
         self.train_img = warp.copy()
         #-------------get the bounding box--------------
-        self.get_minRect(draw_img1, thresh, only=False, visualization=True)
+        self.get_bound(draw_img1, thresh, only=False, visualization=True)
         #--------------get bags of words and training-------#
         if not ONLY_TEST:
             if not self.stored_flag:
@@ -120,12 +131,12 @@ class object_detector():
             cv2.imshow('track', draw_img2)
         
 
-    def get_minRect(self, img, mask, only=True, visualization=True):
-        (_,contours,_)=cv2.findContours(mask,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+    def get_bound(self, img, mask, only=True, visualization=True):
+        (_,contours, hierarchy)=cv2.findContours(mask,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
         if len(contours) > 0:
-            for _, contour in enumerate(contours):
+            for i , contour in enumerate(contours):
                 area = cv2.contourArea(contour)
-                if area>600 and area < 10000:					
+                if area>600 and area < 100000 and hierarchy[0, i, 3] == -1:					
                     M = cv2.moments(contour)
                     cx = int(M['m10']/M['m00'])
                     cy = int(M['m01']/M['m00'])
@@ -158,9 +169,7 @@ class object_detector():
         for i in range(num_object):
             x,y,w,h = self.boxls[i]
             temp = frame[y:y+h, x:x+w, :]
-            #class_folder_dir = self.path + str(i) + 'id'
             img_dir = os.path.join(self.path + "image", str(self.count) + ".jpg")
-            #self.createFolder(class_folder_dir)
             cv2.imwrite(img_dir, temp)
             self.count += 1 
             self.file.write(img_dir + " " + str(i) + "\n") 
@@ -184,9 +193,10 @@ class object_detector():
                                                                                             transforms.ToTensor()
                                                                                        ]))
         trainloader = DataLoader(dataset=trainset, batch_size=BATCH_SIZE, shuffle=True, num_workers=2)
-        #cuda0 = torch.device('cuda:0')
         if is_train:
-            for epoch in range(EPOTH):  # loop over the dataset multiple times
+            t = tqdm.trange(EPOTH, desc='Training')
+            temp = 0
+            for epoch in t:  # loop over the dataset multiple times
                 running_loss = 0.0
                 i = 0
                 for data in trainloader:
@@ -194,24 +204,18 @@ class object_detector():
                     inputs, labels = data
                     if GPU:
                         inputs, labels = inputs.cuda(), labels.cuda()
-                    # print(inputs)
                     inputs, labels = Variable(inputs), Variable(labels.long())
-                    # print(inputs)
-                    # print(labels)
                     # zero the parameter gradients
                     optimizer.zero_grad()
-
                     # forward + backward + optimize
                     outputs = net(inputs)
                     loss = F.cross_entropy(outputs, labels.view(1, -1)[0])
                     loss.backward()
                     optimizer.step()
-
-                    # print statistics
-                    running_loss += loss.item()
-                    if i % 20 == 19:    # print every 2000 mini-batches
-                        print('[%d, %5d] loss: %.3f' %
-                            (epoch + 1, i + 1, running_loss / 20))
+                    t.set_description('loss=%g' %(temp))
+                    running_loss += loss.item()                    
+                    if i % 20 == 19:   
+                        temp = running_loss/20
                         running_loss = 0.0
                     i += 1
 
@@ -236,10 +240,6 @@ class object_detector():
                 cv2.rectangle(draw_img,(x,y),(x+w,y+h),(0,0,255),2)
                 cv2.putText(draw_img,str(out),(x,y),cv2.FONT_HERSHEY_SIMPLEX, 1.0,(0,0,255))
             
-
-        
-
-
 
     @staticmethod
     def reader(path, mode):
@@ -271,6 +271,13 @@ class object_detector():
             0.052897, -0.155430, 0.005959, 0.002077, 0.000000
         ])
         return cv2.undistort(frame, mtx, dist)
+
+
+
+
+
+
+
 
 
 def main():
