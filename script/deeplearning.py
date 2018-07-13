@@ -16,12 +16,12 @@ from torch.autograd import Variable
 import random
 import tqdm
 
-LR = 0.0005
+LR = 0.0003
 BATCH_SIZE = 4
 GPU = True
-COLLECT_TIME = 50.0
+COLLECT_TIME = 30.0
 AUGMENT = True
-EPOTH = 100
+EPOTH = 50
 ONLY_TEST = True
 
 class Net(nn.Module):
@@ -57,7 +57,7 @@ class CovnetDataset(Dataset):
             rotate_range = random.uniform(-180, 180)
             translation_range = random.uniform(-10, 10)
             scale_range = random.uniform(0.7, 1.3)
-            if True:
+            if np.random.random() < 0.7:
                 img1 = img1.rotate(rotate_range)
             if np.random.random() < 0.7:
                  img1 = img1.transform((img1.size[0], img1.size[1]), Image.AFFINE, (1, 0, translation_range, 0, 1, translation_range))
@@ -65,14 +65,14 @@ class CovnetDataset(Dataset):
                 img1 = img1.transpose(Image.FLIP_LEFT_RIGHT)
             if np.random.random() < 0.5:
                 img1 = img1.transpose(Image.FLIP_TOP_BOTTOM)
-            if np.random.random() < 0.7:
-                img1 = img1.resize((int(200 * scale_range), int(100 * scale_range)))
-                half_the_width = img1.size[0] / 2
-                half_the_height = img1.size[1] / 2
-                img1 = img1.crop((half_the_width - 100,
-                        half_the_height - 100,
-                        half_the_width + 50,
-                        half_the_height + 50))
+            # if np.random.random() < 0.7:
+            #     img1 = img1.resize((int(200 * scale_range), int(100 * scale_range)))
+            #     half_the_width = img1.size[0] / 2
+            #     half_the_height = img1.size[1] / 2
+            #     img1 = img1.crop((half_the_width - 100,
+            #             half_the_height - 100,
+            #             half_the_width + 50,
+            #             half_the_height + 50))
         img1 = self.transform(img1)
         return (img1, result)
     def __len__(self):
@@ -87,7 +87,7 @@ class object_detector():
         self.count = 1
         self.path = "/home/intuitivecompting/Desktop/color/Smart-Projector/script/datasets/"
         self.file = open(self.path + "read.txt", "w")
-        self.tracker = cv2.TrackerKCF_create()
+        self.user_input = 0
 
     def update(self, cap, save=False, train=False):
         self.boxls = []
@@ -152,7 +152,7 @@ class object_detector():
                 if visualization: 
                     x,y,w,h = self.boxls[i]
                     cv2.rectangle(img,(x,y),(x+w,y+h),(0,0,255),2)
-                    cv2.putText(img,str(i),(x,y),cv2.FONT_HERSHEY_SIMPLEX, 1.0,(0,0,255))
+                    cv2.putText(img,str(self.user_input),(x,y),cv2.FONT_HERSHEY_SIMPLEX, 1.0,(0,0,255))
 
 
     def warp(self, img):
@@ -163,23 +163,52 @@ class object_detector():
         return dst
     
     def store(self, store_time):
-        num_object = len(self.boxls)
-        frame = self.train_img
+        if len(self.boxls) > 0:
+            frame = self.train_img
         #-------------capturing img for each of item--------------#
-        for i in range(num_object):
-            x,y,w,h = self.boxls[i]
+            x,y,w,h = self.boxls[0]
             temp = frame[y:y+h, x:x+w, :]
             img_dir = os.path.join(self.path + "image", str(self.count) + ".jpg")
             cv2.imwrite(img_dir, temp)
             self.count += 1 
-            self.file.write(img_dir + " " + str(i) + "\n") 
-        if time.time() - self.start_time < store_time:
-            print('output imgs ' + str(self.count) + 'img' )
-            return False
+            self.file.write(img_dir + " " + str(self.user_input) + "\n")
+            #------------------storing-------------------- 
+            if time.time() - self.start_time < store_time:
+                print('output imgs ' + str(self.count) + 'img' )
+                return False
+            #-----------------get to the next item-----------
+            else:
+                self.user_input = int(raw_input("please enter label, or enter -1 as finish \n"))
+                if self.user_input != -1:
+                    self.start_time = time.time()
+                    return False
+                else: 
+                    self.file.close()
+                    print('finish output')
+                    return True
         else:
-            self.file.close()
-            print('finish output')
-            return True
+            return False
+
+
+
+    # def store(self, store_time):
+    #     num_object = len(self.boxls)
+    #     frame = self.train_img
+    #     #-------------capturing img for each of item--------------#
+    #     for i in range(num_object):
+    #         x,y,w,h = self.boxls[i]
+    #         temp = frame[y:y+h, x:x+w, :]
+    #         img_dir = os.path.join(self.path + "image", str(self.count) + ".jpg")
+    #         cv2.imwrite(img_dir, temp)
+    #         self.count += 1 
+    #         self.file.write(img_dir + " " + str(i) + "\n") 
+    #     if time.time() - self.start_time < store_time:
+    #         print('output imgs ' + str(self.count) + 'img' )
+    #         return False
+    #     else:
+    #         self.file.close()
+    #         print('finish output')
+    #         return True
     
     def train(self, draw_img=None, is_train=True):
         if not GPU:
@@ -282,7 +311,6 @@ class object_detector():
 
 def main():
     cap=cv2.VideoCapture(0)
-    # object_detector(cap, save=True)
     start_time = time.time()
     detector = object_detector(start_time)
     while(1):
