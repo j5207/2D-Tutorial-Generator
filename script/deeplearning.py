@@ -15,6 +15,7 @@ from torchvision import transforms
 from torch.autograd import Variable
 import random
 import tqdm
+from math import sqrt
 
 LR = 0.0003
 BATCH_SIZE = 4
@@ -23,6 +24,20 @@ COLLECT_TIME = 30.0
 AUGMENT = True
 EPOTH = 50
 ONLY_TEST = True
+
+distant = lambda (x1, y1), (x2, y2) : sqrt((x1 - x2)**2 + (y1 - y2)**2)
+
+class temp_list():
+    def __init__(self, length):
+        self.list = []
+        self.length = length
+    
+    def append(self, data):
+        if len(self.list) < self.length:
+            self.list.append(data)
+        else:
+            del self.list[0]
+            self.append(data)
 
 class Net(nn.Module):
     def __init__(self):
@@ -88,6 +103,9 @@ class object_detector():
         self.path = "/home/intuitivecompting/Desktop/color/Smart-Projector/script/datasets/"
         self.file = open(self.path + "read.txt", "w")
         self.user_input = 0
+        self.predict = None
+        self.memory = temp_list(100)
+        self.num_object = 2
 
     def update(self, cap, save=False, train=False):
         self.boxls = []
@@ -114,7 +132,7 @@ class object_detector():
         draw_img2 = warp.copy()
         self.train_img = warp.copy()
         #-------------get the bounding box--------------
-        self.get_bound(draw_img1, thresh, only=False, visualization=True)
+        self.get_bound(draw_img1, thresh, hand_mask, only=False, visualization=True)
         #--------------get bags of words and training-------#
         if not ONLY_TEST:
             if not self.stored_flag:
@@ -128,32 +146,107 @@ class object_detector():
                 cv2.imshow('track', draw_img2)
         else:
             self.train(draw_img2, is_train=False)
+            self.merge()
             cv2.imshow('track', draw_img2)
         
-
-    def get_bound(self, img, mask, only=True, visualization=True):
-        (_,contours, hierarchy)=cv2.findContours(mask,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
-        if len(contours) > 0:
-            for i , contour in enumerate(contours):
+    def get_bound(self, img, object_mask, hand_mask, only=True, visualization=True):
+        (_,object_contours, object_hierarchy)=cv2.findContours(object_mask,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+        (_,hand_contours, hand_hierarchy)=cv2.findContours(hand_mask,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+        hand_m_ls = []
+        object_m_ls = []
+        if len(hand_contours) > 0:
+            for i , contour in enumerate(hand_contours):
                 area = cv2.contourArea(contour)
-                if area>600 and area < 100000 and hierarchy[0, i, 3] == -1:					
+                if area>600 and area < 100000 and hand_hierarchy[0, i, 3] == -1:					
                     M = cv2.moments(contour)
                     cx = int(M['m10']/M['m00'])
                     cy = int(M['m01']/M['m00'])
-                    rect = cv2.minAreaRect(contour)
-                    box = np.int0(cv2.boxPoints(rect))
+                    hand_m_ls.append((cx, cy))
+        if len(object_contours) > 0:
+            for i , contour in enumerate(object_contours):
+                area = cv2.contourArea(contour)
+                if area>600 and area < 100000 and object_hierarchy[0, i, 3] == -1:					
+                    M = cv2.moments(contour)
+                    cx = int(M['m10']/M['m00'])
+                    cy = int(M['m01']/M['m00'])
+                    object_m_ls.append((cx, cy))
                     x,y,w,h = cv2.boundingRect(contour)
                     self.boxls.append([x, y, w, h])
-            #---------------sorting the list according to the x coordinate of each item
-            if len(self.boxls) > 0:
-                boxls_arr = np.array(self.boxls)
-                self.boxls = boxls_arr[boxls_arr[:, 0].argsort()].tolist()
-            for i in range(len(self.boxls)): 
-                if visualization: 
-                    x,y,w,h = self.boxls[i]
-                    cv2.rectangle(img,(x,y),(x+w,y+h),(0,0,255),2)
-                    cv2.putText(img,str(self.user_input),(x,y),cv2.FONT_HERSHEY_SIMPLEX, 1.0,(0,0,255))
+        temp_i = []
+        temp_j = []
+        for (x3, y3) in hand_m_ls:
+            for i in range(len(object_m_ls)):
+                for j in range(i + 1, len(object_m_ls)):
+                    x1, y1 = object_m_ls[i]
+                    x2, y2 = object_m_ls[j]
+                    d12 = distant((x1, y1), (x2, y2))
+                    d13 = distant((x1, y1), (x3, y3))
+                    d23 = distant((x2, y2), (x3, y3))
+                    dis = d13 * d23 / d12
+                    if dis < 60 and d12 < 140 and d13 < 100 and d23 < 100:
+                        temp_i.append(i)
+                        temp_j.append(j)
+                        # print(dis, d12, d13, d23)
 
+        if len(temp_i) > 0 and len(temp_j) > 0 and len(self.boxls) >= 1:
+            for (i, j) in zip(temp_i, temp_j):
+                if self.boxls[i] != 0 and self.boxls[j] != 0:
+                    # x_i, y_i, w_i, h_i = self.boxls[i]
+                    # x_j, y_j, w_j, h_j = self.boxls[j]     
+                    # temp = [self.boxls[i], self.boxls[j]]
+                    # ind_min = np.argmin([self.boxls[i][0], self.boxls[j][0]])  
+                    # ind_max = np.argmax([self.boxls[i][0], self.boxls[j][0]])
+                    # if y_i - y_j != 0 and (x_i - x_j)/(y_i - y_j) > 0:  
+                    #     x, y = temp[ind_min][0], temp[ind_min][1]
+                    #     w, h = temp[ind_max][0] + temp[ind_max][2] - x, temp[ind_max][1] + temp[ind_max][3] - y           
+                    # else:
+
+                    x, y = np.min([self.boxls[i][0], self.boxls[j][0]]), np.min([self.boxls[i][1], self.boxls[j][1]])
+                    #w, h = temp[ind_max][0] + temp[ind_max][2] - x, temp[ind_min][1] + temp[ind_min][3]- y  
+                    x_max, y_max = np.max([self.boxls[i][0] + self.boxls[i][2], self.boxls[j][0] + self.boxls[j][2]]), np.max([self.boxls[i][1] + self.boxls[i][3], self.boxls[j][1] + self.boxls[j][3]])         
+                    w, h = x_max - x, y_max - y
+                    self.boxls[i] = 0
+                    self.boxls[j] = [x, y, w, h]
+            
+            self.boxls = filter(lambda a: a != 0, self.boxls)   
+
+            #---------------sorting the list according to the x coordinate of each item
+        if len(self.boxls) > 0:
+            boxls_arr = np.array(self.boxls)
+            self.boxls = boxls_arr[boxls_arr[:, 0].argsort()].tolist()
+        for i in range(len(self.boxls)): 
+            if visualization: 
+                ind = max(range(len(self.boxls)), key=lambda i:self.boxls[i][2]*self.boxls[i][3])
+                x,y,w,h = self.boxls[ind]
+                cv2.rectangle(img,(x,y),(x+w,y+h),(0,0,255),2)
+                cv2.putText(img,str(self.user_input),(x,y),cv2.FONT_HERSHEY_SIMPLEX, 1.0,(0,0,255))
+
+    # def get_bound(self, img, mask, only=True, visualization=True):
+    #     (_,contours, hierarchy)=cv2.findContours(mask,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+    #     if len(contours) > 0:
+    #         for i , contour in enumerate(contours):
+    #             area = cv2.contourArea(contour)
+    #             if area>600 and area < 100000 and hierarchy[0, i, 3] == -1:					
+    #                 M = cv2.moments(contour)
+    #                 cx = int(M['m10']/M['m00'])
+    #                 cy = int(M['m01']/M['m00'])
+    #                 rect = cv2.minAreaRect(contour)
+    #                 box = np.int0(cv2.boxPoints(rect))
+    #                 x,y,w,h = cv2.boundingRect(contour)
+    #                 self.boxls.append([x, y, w, h])
+    #         #---------------sorting the list according to the x coordinate of each item
+    #         if len(self.boxls) > 0:
+    #             boxls_arr = np.array(self.boxls)
+    #             self.boxls = boxls_arr[boxls_arr[:, 0].argsort()].tolist()
+    #         for i in range(len(self.boxls)): 
+    #             if visualization: 
+    #                 x,y,w,h = self.boxls[i]
+    #                 cv2.rectangle(img,(x,y),(x+w,y+h),(0,0,255),2)
+    #                 cv2.putText(img,str(self.user_input),(x,y),cv2.FONT_HERSHEY_SIMPLEX, 1.0,(0,0,255))
+
+    
+        
+        
 
     def warp(self, img):
         pts1 = np.float32([[115,124],[520,112],[2,476],[640,480]])
@@ -165,10 +258,12 @@ class object_detector():
     def store(self, store_time):
         if len(self.boxls) > 0:
             frame = self.train_img
+            ind = max(range(len(self.boxls)), key=lambda i:self.boxls[i][2]*self.boxls[i][3])
         #-------------capturing img for each of item--------------#
-            x,y,w,h = self.boxls[0]
+            x,y,w,h = self.boxls[ind]
             temp = frame[y:y+h, x:x+w, :]
             img_dir = os.path.join(self.path + "image", str(self.count) + ".jpg")
+            self.createFolder(self.path + "image")
             cv2.imwrite(img_dir, temp)
             self.count += 1 
             self.file.write(img_dir + " " + str(self.user_input) + "\n")
@@ -178,9 +273,11 @@ class object_detector():
                 return False
             #-----------------get to the next item-----------
             else:
+                print("previous label: {} \n".format(self.user_input))
                 self.user_input = int(raw_input("please enter label, or enter -1 as finish \n"))
                 if self.user_input != -1:
                     self.start_time = time.time()
+                    self.num_object += 1
                     return False
                 else: 
                     self.file.close()
@@ -211,6 +308,7 @@ class object_detector():
     #         return True
     
     def train(self, draw_img=None, is_train=True):
+        self.predict = {}
         if not GPU:
             net = Net()
         else:
@@ -218,10 +316,11 @@ class object_detector():
         criterion = nn.CrossEntropyLoss()
         optimizer = optim.SGD(net.parameters(), lr=LR, momentum=0.9)
         reader_train = self.reader(self.path, "read.txt")
-        trainset = CovnetDataset(reader=reader_train, transforms=transforms.Compose([transforms.Scale((200, 100)),
+        trainset = CovnetDataset(reader=reader_train, transforms=transforms.Compose([transforms.Resize((200, 100)),
                                                                                             transforms.ToTensor()
                                                                                        ]))
         trainloader = DataLoader(dataset=trainset, batch_size=BATCH_SIZE, shuffle=True, num_workers=2)
+#-----------------------------------training----------------------------------------------------------------        
         if is_train:
             t = tqdm.trange(EPOTH, desc='Training')
             temp = 0
@@ -251,11 +350,13 @@ class object_detector():
             print('Finished Training')
             torch.save(net.state_dict(), f=self.path + 'model')
             return True
+#---------------------------------testing-----------------------------------------------
         else:
+            self.predict = []
             net.load_state_dict(torch.load(f=self.path + 'model'))
             num_object = len(self.boxls)
             frame = self.train_img
-            preprocess = transforms.Compose([transforms.Scale((200, 100)),
+            preprocess = transforms.Compose([transforms.Resize((200, 100)),
                                                         transforms.ToTensor()])
             for i in range(num_object):
                 x,y,w,h = self.boxls[i]
@@ -268,7 +369,29 @@ class object_detector():
                 out = np.argmax(net(img_variable).cpu().data.numpy()[0])
                 cv2.rectangle(draw_img,(x,y),(x+w,y+h),(0,0,255),2)
                 cv2.putText(draw_img,str(out),(x,y),cv2.FONT_HERSHEY_SIMPLEX, 1.0,(0,0,255))
+                self.predict.append(((x, y, w, h), out))
+            self.memory.append(self.predict)
+            #print(len(self.memory.list))
+    #---------------------------------merge---------------------------------------#
+    
+    def merge(self):
+        if len(self.memory.list) < 100:
+            print("pass")
+            pass
+        else: 
+            print("nm", self.num_object)
+            num = len(filter(lambda a: len(a) < self.num_object, self.memory.list))
+            print(num)
+            if num > 70:
+                print("######################merge##########################")
             
+            
+                
+                
+                
+
+
+
 
     @staticmethod
     def reader(path, mode):
@@ -303,7 +426,12 @@ class object_detector():
 
 
 
-
+class graphics():
+    def __init__(self):
+        self.predict = None
+    
+    def update(self, predict):
+        self.predict = predict
 
 
 
@@ -315,6 +443,7 @@ def main():
     detector = object_detector(start_time)
     while(1):
         detector.update(cap, save=True)
+        #print(detector.predict)
         if cv2.waitKey(5) & 0xFF == 27:
             break
     cap.release()
