@@ -366,6 +366,7 @@ class object_detector():
                 img_tensor = preprocess(image)
                 img_tensor.unsqueeze_(0)
                 img_variable = Variable(img_tensor).cuda()
+                print("i:{} \n vector:{}").format(i, net(img_variable).cpu().data.numpy())
                 out = np.argmax(net(img_variable).cpu().data.numpy()[0])
                 cv2.rectangle(draw_img,(x,y),(x+w,y+h),(0,0,255),2)
                 cv2.putText(draw_img,str(out),(x,y),cv2.FONT_HERSHEY_SIMPLEX, 1.0,(0,0,255))
@@ -376,14 +377,14 @@ class object_detector():
     
     def merge(self):
         if len(self.memory.list) < 100:
-            print("pass")
+            #print("pass")
             pass
         else: 
-            print("nm", self.num_object)
+            #print("nm", self.num_object)
             num = len(filter(lambda a: len(a) < self.num_object, self.memory.list))
-            print(num)
-            if num > 70:
-                print("######################merge##########################")
+            #print(num)
+            # if num > 70:
+                #print("######################merge##########################")
             
             
                 
