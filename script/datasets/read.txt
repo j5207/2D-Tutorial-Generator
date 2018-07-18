@@ -1,0 +1,14 @@
+/home/intuitivecompting/Desktop/color/Smart-Projector/script/datasets/image/1.jpg 0
+/home/intuitivecompting/Desktop/color/Smart-Projector/script/datasets/image/2.jpg 0
+/home/intuitivecompting/Desktop/color/Smart-Projector/script/datasets/image/3.jpg 0
+/home/intuitivecompting/Desktop/color/Smart-Projector/script/datasets/image/4.jpg 0
+/home/intuitivecompting/Desktop/color/Smart-Projector/script/datasets/image/5.jpg 0
+/home/intuitivecompting/Desktop/color/Smart-Projector/script/datasets/image/6.jpg 0
+/home/intuitivecompting/Desktop/color/Smart-Projector/script/datasets/image/7.jpg 0
+/home/intuitivecompting/Desktop/color/Smart-Projector/script/datasets/image/8.jpg 0
+/home/intuitivecompting/Desktop/color/Smart-Projector/script/datasets/image/9.jpg 0
+/home/intuitivecompting/Desktop/color/Smart-Projector/script/datasets/image/10.jpg 0
+/home/intuitivecompting/Desktop/color/Smart-Projector/script/datasets/image/11.jpg 0
+/home/intuitivecompting/Desktop/color/Smart-Projector/script/datasets/image/12.jpg 0
+/home/intuitivecompting/Desktop/color/Smart-Projector/script/datasets/image/13.jpg 0
+/home/intuitivecompting/Desktop/color/Smart-Projector/script/datasets/image/14.jpg 0
