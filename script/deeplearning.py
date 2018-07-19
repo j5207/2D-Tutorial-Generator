@@ -10,7 +10,7 @@ import os
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 import torch
-from PIL import Image
+from PIL import Image, ImageTk
 from torchvision import transforms
 from torch.autograd import Variable
 import random
@@ -24,10 +24,10 @@ from utils import CovnetDataset, Net
 LR = 0.0002
 BATCH_SIZE = 4
 GPU = True
-COLLECT_TIME = 1.0
+COLLECT_TIME = 10.0
 AUGMENT = False
 EPOTH = 100
-ONLY_TEST = False
+ONLY_TEST = True
 
 distant = lambda (x1, y1), (x2, y2) : sqrt((x1 - x2)**2 + (y1 - y2)**2)
 
@@ -45,7 +45,8 @@ class temp_list():
 
 
 class object_detector(): 
-    def __init__(self, start): 		
+    def __init__(self, start): 	
+        self.cap = cv2.VideoCapture(0)	
         self.start_time = start
         self.stored_flag = False
         self.trained_flag = False
@@ -57,56 +58,56 @@ class object_detector():
         self.predict = None
         self.memory = temp_list(100)
         self.num_object = 2
-        #self.thread1 = threading.Thread(target=self.thread_1, args=())
-        #self.cap = cap
+        
+        if ONLY_TEST:
+            if not GPU:
+                self.net = Net()
+            else:
+                self.net = Net().cuda()
+            self.net.load_state_dict(torch.load(f=self.path + 'model'))
 
-    # def thread_1(self):
-    #     while True:
-    #         self.update(self.cap, save=True)
-    #         if cv2.waitKey(5) & 0xFF == 27:
-    #             break
 
-
-    def update(self, cap, save=False, train=False):
+    def update(self, save=True, train=False):
         self.boxls = []
-        _, origin = cap.read()
-        rect = self.camrectify(origin)
+        OK, origin = self.cap.read()
+        if OK:
+            rect = self.camrectify(origin)
 
-        #-------------warp the image---------------------#
-        warp = self.warp(rect)
-        #-------------segment the object----------------#
-        hsv = cv2.cvtColor(warp,cv2.COLOR_BGR2HSV)
-        green_mask = cv2.inRange(hsv, np.array([57,145,0]), np.array([85,255,255]))
-        hand_mask = cv2.inRange(hsv, np.array([118,32,0]), np.array([153,255,255]))
-        hand_mask = cv2.dilate(hand_mask, kernel = np.ones((7,7),np.uint8))
+            #-------------warp the image---------------------#
+            warp = self.warp(rect)
+            #-------------segment the object----------------#
+            hsv = cv2.cvtColor(warp,cv2.COLOR_BGR2HSV)
+            green_mask = cv2.inRange(hsv, np.array([57,145,0]), np.array([85,255,255]))
+            hand_mask = cv2.inRange(hsv, np.array([118,32,0]), np.array([153,255,255]))
+            hand_mask = cv2.dilate(hand_mask, kernel = np.ones((7,7),np.uint8))
 
-        skin_mask = cv2.inRange(hsv, np.array([0,52,0]), np.array([56,255,255]))
-        skin_mask = cv2.dilate(skin_mask, kernel = np.ones((5,5),np.uint8))
+            skin_mask = cv2.inRange(hsv, np.array([0,52,0]), np.array([56,255,255]))
+            skin_mask = cv2.dilate(skin_mask, kernel = np.ones((5,5),np.uint8))
 
-        thresh = 255 - green_mask
-        thresh = cv2.subtract(thresh, hand_mask)
-        thresh = cv2.subtract(thresh, skin_mask)
-        #thresh = cv2.erode(thresh, kernel = np.ones((5,5),np.uint8))
-        #cv2.imshow('thresh', thresh)
-        draw_img1 = warp.copy()
-        draw_img2 = warp.copy()
-        self.train_img = warp.copy()
-        #-------------get the bounding box--------------
-        self.get_bound(draw_img1, thresh, hand_mask, only=False, visualization=True)
-        #--------------get bags of words and training-------#
-        if not ONLY_TEST:
-            if not self.stored_flag:
-                cv2.imshow('store', draw_img1)
-                self.stored_flag = self.store(COLLECT_TIME)
-            if self.stored_flag and not self.trained_flag: 
-                cv2.destroyWindow('store')
-                self.trained_flag = self.train()
-            if self.trained_flag: 
+            thresh = 255 - green_mask
+            thresh = cv2.subtract(thresh, hand_mask)
+            thresh = cv2.subtract(thresh, skin_mask)
+            #thresh = cv2.erode(thresh, kernel = np.ones((5,5),np.uint8))
+            # self.fromcv2tk(thresh, self.master)
+            draw_img1 = warp.copy()
+            draw_img2 = warp.copy()
+            self.train_img = warp.copy()
+            #-------------get the bounding box--------------
+            self.get_bound(draw_img1, thresh, hand_mask, only=False, visualization=True)
+            #--------------get bags of words and training-------#
+            if not ONLY_TEST:
+                if not self.stored_flag:
+                    cv2.imshow('store', draw_img1)
+                    self.stored_flag = self.store(COLLECT_TIME)
+                if self.stored_flag and not self.trained_flag: 
+                    cv2.destroyWindow('store')
+                    self.trained_flag = self.train()
+                if self.trained_flag: 
+                    self.train(draw_img2, is_train=False)
+                    cv2.imshow('track', draw_img2)
+            else:
                 self.train(draw_img2, is_train=False)
                 cv2.imshow('track', draw_img2)
-        else:
-            self.train(draw_img2, is_train=False)
-            cv2.imshow('track', draw_img2)
         
     def get_bound(self, img, object_mask, hand_mask, only=True, visualization=True):
         (_,object_contours, object_hierarchy)=cv2.findContours(object_mask,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
@@ -233,7 +234,7 @@ class object_detector():
             count_ls = []
             t = tqdm.trange(EPOTH, desc='Training')
             temp = 0
-            for epoch in t:  # loop over the dataset multiple times
+            for _ in t:  # loop over the dataset multiple times
                 running_loss = 0.0
                 i = 0
                 for data in trainloader:
@@ -268,7 +269,8 @@ class object_detector():
 #---------------------------------testing-----------------------------------------------
         else:
             self.predict = []
-            net.load_state_dict(torch.load(f=self.path + 'model'))
+            #net.load_state_dict(torch.load(f=self.path + 'model'))
+            net = self.net
             num_object = len(self.boxls)
             frame = self.train_img
             preprocess = transforms.Compose([transforms.Resize((200, 200)),
@@ -305,11 +307,6 @@ class object_detector():
                 #print("######################merge##########################")
             
             
-                
-                
-                
-
-
 
 
     @staticmethod
@@ -343,18 +340,37 @@ class object_detector():
         ])
         return cv2.undistort(frame, mtx, dist)
 
+    @staticmethod
+    def fromcv2tk(cv2image, master):
+        img = Image.fromarray(cv2image)
+        imgtk = ImageTk.PhotoImage(image=img)
+        master.imgtk = imgtk
+        master.configure(image=imgtk)
+    
+    def __del__(self):
+        self.cap.release()
+        
+
+# def main():
+#     cap=cv2.VideoCapture(0)
+#     start_time = time.time()
+#     detector = object_detector(start_time, cap)
+#     detector.thread1.start()
+        
+#     # detector.thread1.start()
+#     cap.release()
+#     cv2.destroyAllWindows()
 
 
 def main():
-    cap=cv2.VideoCapture(0)
+    
     start_time = time.time()
     detector = object_detector(start_time)
+   
     while 1:
-        detector.update(cap, save=True)
+        detector.update(save=True)
         if cv2.waitKey(5) & 0xFF == 27:
             break
-    # detector.thread1.start()
-    cap.release()
     cv2.destroyAllWindows()
 
 if __name__ == '__main__':
