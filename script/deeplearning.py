@@ -27,7 +27,7 @@ GPU = True
 COLLECT_TIME = 10.0
 AUGMENT = False
 EPOTH = 100
-ONLY_TEST = True
+ONLY_TEST = False
 
 distant = lambda (x1, y1), (x2, y2) : sqrt((x1 - x2)**2 + (y1 - y2)**2)
 
@@ -57,8 +57,24 @@ class object_detector():
         self.user_input = 0
         self.predict = None
         self.memory = temp_list(100)
-        self.num_object = 2
+        self.store_time = COLLECT_TIME
+        #-----------------------create GUI-----------------------#
+        self.gui_img = np.zeros((130,640,3), np.uint8)
+        cv2.circle(self.gui_img,(160,50),30,(255,0,0),-1)
+        cv2.putText(self.gui_img,"start",(130,110),cv2.FONT_HERSHEY_SIMPLEX, 1.0,(255,0,0))
+        cv2.circle(self.gui_img,(320,50),30,(0,255,0),-1)
+        cv2.putText(self.gui_img,"stop",(290,110),cv2.FONT_HERSHEY_SIMPLEX, 1.0,(0,255,0))
+        cv2.circle(self.gui_img,(480,50),30,(0,0,255),-1)
+        cv2.putText(self.gui_img,"quit",(450,110),cv2.FONT_HERSHEY_SIMPLEX, 1.0,(0,0,255))
+        cv2.namedWindow('gui_img')
+        cv2.setMouseCallback('gui_img',self.gui_callback)
         
+        
+        #---------------------set some flag-------------------#
+        self.storing = None
+        self.quit = None
+        self.temp_surface = None
+        #----------------------for easlier developing-----------------#
         if ONLY_TEST:
             if not GPU:
                 self.net = Net()
@@ -68,6 +84,7 @@ class object_detector():
 
 
     def update(self, save=True, train=False):
+        
         self.boxls = []
         OK, origin = self.cap.read()
         if OK:
@@ -75,6 +92,7 @@ class object_detector():
 
             #-------------warp the image---------------------#
             warp = self.warp(rect)
+
             #-------------segment the object----------------#
             hsv = cv2.cvtColor(warp,cv2.COLOR_BGR2HSV)
             green_mask = cv2.inRange(hsv, np.array([57,145,0]), np.array([85,255,255]))
@@ -87,8 +105,7 @@ class object_detector():
             thresh = 255 - green_mask
             thresh = cv2.subtract(thresh, hand_mask)
             thresh = cv2.subtract(thresh, skin_mask)
-            #thresh = cv2.erode(thresh, kernel = np.ones((5,5),np.uint8))
-            # self.fromcv2tk(thresh, self.master)
+
             draw_img1 = warp.copy()
             draw_img2 = warp.copy()
             self.train_img = warp.copy()
@@ -97,10 +114,14 @@ class object_detector():
             #--------------get bags of words and training-------#
             if not ONLY_TEST:
                 if not self.stored_flag:
-                    cv2.imshow('store', draw_img1)
-                    self.stored_flag = self.store(COLLECT_TIME)
+                    #cv2.imshow('gui_img', self.gui_img)
+                    self.temp_surface = np.vstack((draw_img1, self.gui_img))
+                    
+                    self.stored_flag = self.store()
+                    cv2.imshow('gui_img', self.temp_surface)
                 if self.stored_flag and not self.trained_flag: 
                     cv2.destroyWindow('store')
+                    cv2.destroyWindow('gui_img')
                     self.trained_flag = self.train()
                 if self.trained_flag: 
                     self.train(draw_img2, is_train=False)
@@ -170,49 +191,42 @@ class object_detector():
                 cv2.rectangle(img,(x,y),(x+w,y+h),(0,0,255),2)
                 cv2.putText(img,str(self.user_input),(x,y),cv2.FONT_HERSHEY_SIMPLEX, 1.0,(0,0,255))
 
-   
-        
+     
+    def gui_callback(self, event, x, y, flags, param):
+        if event == cv2.EVENT_LBUTTONDBLCLK and (self.temp_surface[y, x] == np.array([255, 0, 0])).all():
+            self.storing = True
+            self.user_input += 1
+        if event == cv2.EVENT_LBUTTONDBLCLK and (self.temp_surface[y, x] == np.array([0, 255, 0])).all():
+            self.storing = False
+        if event == cv2.EVENT_LBUTTONDBLCLK and (self.temp_surface[y, x] == np.array([0, 0, 255])).all():
+            self.storing = False
+            self.quit = True
 
-    def warp(self, img):
-        pts1 = np.float32([[115,124],[520,112],[2,476],[640,480]])
-        pts2 = np.float32([[0,0],[640,0],[0,480],[640,480]])
-        M = cv2.getPerspectiveTransform(pts1,pts2)
-        dst = cv2.warpPerspective(img,M,(640,480))
-        return dst
-    
-    def store(self, store_time):
+    def store(self):
         if len(self.boxls) > 0:
-            frame = self.train_img
-            ind = max(range(len(self.boxls)), key=lambda i:self.boxls[i][2]*self.boxls[i][3])
-        #-------------capturing img for each of item--------------#
-            x,y,w,h = self.boxls[ind]
-            temp = frame[y:y+h, x:x+w, :]
-            img_dir = os.path.join(self.path + "image", str(self.count) + ".jpg")
-            self.createFolder(self.path + "image")
-            cv2.imwrite(img_dir, temp)
-            self.count += 1 
-            self.file.write(img_dir + " " + str(self.user_input) + "\n")
-            #------------------storing-------------------- 
-            if time.time() - self.start_time < store_time:
+            if self.storing:
+                cv2.putText(self.temp_surface,"recording",(450,50),cv2.FONT_HERSHEY_SIMPLEX, 1.0,(0,0,255), 2)
+                frame = self.train_img
+                ind = max(range(len(self.boxls)), key=lambda i:self.boxls[i][2]*self.boxls[i][3])
+            #-------------capturing img for each of item--------------#
+                x,y,w,h = self.boxls[ind]
+                temp = frame[y:y+h, x:x+w, :]
+                img_dir = os.path.join(self.path + "image", str(self.count) + ".jpg")
+                self.createFolder(self.path + "image")
+                cv2.imwrite(img_dir, temp)              
+                self.file.write(img_dir + " " + str(self.user_input) + "\n")
                 print('output imgs ' + str(self.count) + 'img' )
+                self.count += 1 
                 return False
-            #-----------------get to the next item-----------
-            else:
-                print("previous label: {} \n".format(self.user_input))
-                self.user_input = int(raw_input("please enter label, or enter -1 as finish \n"))
-                if self.user_input != -1:
-                    self.start_time = time.time()
-                    self.num_object += 1
-                    return False
-                else: 
-                    self.file.close()
-                    print('finish output')
-                    return True
+            #-----------------get to the next item-----------    
+            if self.quit:
+                self.file.close()
+                print('finish output')
+                return True
         else:
             return False
-
-
     
+        
     def train(self, draw_img=None, is_train=True):
         self.predict = {}
         if not GPU:
@@ -225,7 +239,7 @@ class object_detector():
         reader_train = self.reader(self.path, "read.txt")
         trainset = CovnetDataset(reader=reader_train, transforms=transforms.Compose([transforms.Resize((200, 200)),
                                                                                             transforms.ToTensor()
-                                                                                       ]))
+                                                                                    ]))
         trainloader = DataLoader(dataset=trainset, batch_size=BATCH_SIZE, shuffle=True, num_workers=2)
 #-----------------------------------training----------------------------------------------------------------        
         if is_train:
@@ -293,19 +307,14 @@ class object_detector():
                 self.predict.append(((x, y, w, h), out))
             self.memory.append(self.predict)
             #print(len(self.memory.list))
-    #---------------------------------merge---------------------------------------#
+
     
-    def merge(self):
-        if len(self.memory.list) < 100:
-            #print("pass")
-            pass
-        else: 
-            #print("nm", self.num_object)
-            num = len(filter(lambda a: len(a) < self.num_object, self.memory.list))
-            #print(num)
-            # if num > 70:
-                #print("######################merge##########################")
-            
+    def warp(self, img):
+        pts1 = np.float32([[115,124],[520,112],[2,476],[640,480]])
+        pts2 = np.float32([[0,0],[640,0],[0,480],[640,480]])
+        M = cv2.getPerspectiveTransform(pts1,pts2)
+        dst = cv2.warpPerspective(img,M,(640,480))
+        return dst
             
 
 
