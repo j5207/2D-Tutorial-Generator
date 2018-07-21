@@ -25,8 +25,8 @@ LR = 0.0002
 BATCH_SIZE = 4
 GPU = True
 COLLECT_TIME = 10.0
-AUGMENT = False
-EPOTH = 100
+AUGMENT = True
+EPOTH = 50
 ONLY_TEST = False
 
 distant = lambda (x1, y1), (x2, y2) : sqrt((x1 - x2)**2 + (y1 - y2)**2)
@@ -48,12 +48,18 @@ class object_detector():
     def __init__(self, start): 	
         self.cap = cv2.VideoCapture(0)	
         self.start_time = start
+
         self.stored_flag = False
         self.trained_flag = False
+        self.milstone_flag = False
+        self.incremental_train_flag = False
+        self.tracking_flag = False
+
         self.boxls = None
         self.count = 1
         self.path = "/home/intuitivecompting/Desktop/color/Smart-Projector/script/datasets/"
         self.file = open(self.path + "read.txt", "w")
+        self.milestone_file = open(self.path + "mileston_read.txt", "w")
         self.user_input = 0
         self.predict = None
         self.memory = temp_list(100)
@@ -73,6 +79,9 @@ class object_detector():
         #---------------------set some flag-------------------#
         self.storing = None
         self.quit = None
+        # self.saving_milstone = None
+        # self.stop_saving_milstone = None
+        #---------------------set gui image----------------------#
         self.temp_surface = None
         #----------------------for easlier developing-----------------#
         if ONLY_TEST:
@@ -108,6 +117,7 @@ class object_detector():
 
             draw_img1 = warp.copy()
             draw_img2 = warp.copy()
+            draw_img3 = warp.copy()
             self.train_img = warp.copy()
             #-------------get the bounding box--------------
             self.get_bound(draw_img1, thresh, hand_mask, only=False, visualization=True)
@@ -120,15 +130,24 @@ class object_detector():
                     self.stored_flag = self.store()
                     cv2.imshow('gui_img', self.temp_surface)
                 if self.stored_flag and not self.trained_flag: 
-                    cv2.destroyWindow('store')
-                    cv2.destroyWindow('gui_img')
+                    #cv2.destroyWindow('gui_img')
                     self.trained_flag = self.train()
-                if self.trained_flag: 
-                    self.train(draw_img2, is_train=False)
-                    cv2.imshow('track', draw_img2)
+                if self.trained_flag and not self.milstone_flag: 
+                    self.test(draw_img2)
+                    #-----------------visualization of tracking----------
+                    self.temp_surface = np.vstack((draw_img2, self.gui_img))
+                    cv2.imshow('gui_img', self.temp_surface)
+                if self.milstone_flag and not self.incremental_train_flag:
+                    cv2.destroyWindow('gui_img')
+                    self.incremental_train_flag = self.train(is_incremental=True)
+                if self.incremental_train_flag and not self.tracking_flag:
+                    self.test(draw_img3, is_tracking=True)
+                    cv2.imshow('tracking', draw_img3)
             else:
-                self.train(draw_img2, is_train=False)
-                cv2.imshow('track', draw_img2)
+                self.test(draw_img2)
+                self.temp_surface = np.vstack((draw_img2, self.gui_img))
+                cv2.imshow('gui_img', self.temp_surface)
+                #cv2.imshow('track', draw_img2)
         
     def get_bound(self, img, object_mask, hand_mask, only=True, visualization=True):
         (_,object_contours, object_hierarchy)=cv2.findContours(object_mask,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
@@ -196,13 +215,27 @@ class object_detector():
         if event == cv2.EVENT_LBUTTONDBLCLK and (self.temp_surface[y, x] == np.array([255, 0, 0])).all():
             self.storing = True
             self.user_input += 1
+            print("start")
         if event == cv2.EVENT_LBUTTONDBLCLK and (self.temp_surface[y, x] == np.array([0, 255, 0])).all():
             self.storing = False
+            print("stop")
         if event == cv2.EVENT_LBUTTONDBLCLK and (self.temp_surface[y, x] == np.array([0, 0, 255])).all():
-            self.storing = False
+            self.storing = None
             self.quit = True
+            print("quit")
+        # if event == cv2.EVENT_LBUTTONDBLCLK and (self.temp_surface[y, x] == np.array([255, 0, 255])).all():
+        #     self.saving_milstone = True
+        #     self.user_input += 1
 
-    def store(self):
+    def store(self, is_milestone=False):
+        if is_milestone:
+            file = self.milestone_file
+            img_dir = os.path.join(self.path + "milestone_image", str(self.count) + ".jpg")
+            self.createFolder(self.path + "milestone_image")
+        else:
+            file = self.file
+            img_dir = os.path.join(self.path + "image", str(self.count) + ".jpg")
+            self.createFolder(self.path + "image")
         if len(self.boxls) > 0:
             if self.storing:
                 cv2.putText(self.temp_surface,"recording",(450,50),cv2.FONT_HERSHEY_SIMPLEX, 1.0,(0,0,255), 2)
@@ -211,38 +244,45 @@ class object_detector():
             #-------------capturing img for each of item--------------#
                 x,y,w,h = self.boxls[ind]
                 temp = frame[y:y+h, x:x+w, :]
-                img_dir = os.path.join(self.path + "image", str(self.count) + ".jpg")
-                self.createFolder(self.path + "image")
-                cv2.imwrite(img_dir, temp)              
-                self.file.write(img_dir + " " + str(self.user_input) + "\n")
+                
+                cv2.imwrite(img_dir, temp)         
+                file.write(img_dir + " " + str(self.user_input) + "\n")
                 print('output imgs ' + str(self.count) + 'img' )
                 self.count += 1 
                 return False
             #-----------------get to the next item-----------    
             if self.quit:
-                self.file.close()
+                file.close()
                 print('finish output')
+                
+
+                
                 return True
         else:
             return False
+
     
         
-    def train(self, draw_img=None, is_train=True):
-        self.predict = {}
-        if not GPU:
-            net = Net()
+    def train(self, is_incremental=False):
+        #criterion = nn.CrossEntropyLoss()
+        
+        #optimizer = optim.Adam(self.net.parameters(), lr=LR)
+        if not is_incremental:
+            reader_train = self.reader(self.path, "read.txt")
+            if not GPU:
+                self.net = Net()
+            else:
+                self.net = Net().cuda()
         else:
-            net = Net().cuda()
-        criterion = nn.CrossEntropyLoss()
-        # optimizer = optim.SGD(net.parameters(), lr=LR, momentum=0.9)
-        optimizer = optim.Adam(net.parameters(), lr=LR)
-        reader_train = self.reader(self.path, "read.txt")
+            reader_train = self.reader(self.path, "mileston_read.txt")
+            self.net.load_state_dict(torch.load(f=self.path + 'model'))
+        optimizer = optim.SGD(self.net.parameters(), lr=LR, momentum=0.9)
         trainset = CovnetDataset(reader=reader_train, transforms=transforms.Compose([transforms.Resize((200, 200)),
                                                                                             transforms.ToTensor()
                                                                                     ]))
         trainloader = DataLoader(dataset=trainset, batch_size=BATCH_SIZE, shuffle=True, num_workers=2)
 #-----------------------------------training----------------------------------------------------------------        
-        if is_train:
+        if True:
             loss_ls = []
             count = 0
             count_ls = []
@@ -260,7 +300,7 @@ class object_detector():
                     # zero the parameter gradients
                     optimizer.zero_grad()
                     # forward + backward + optimize
-                    outputs = net(inputs)
+                    outputs = self.net(inputs)
                     loss = F.cross_entropy(outputs, labels.view(1, -1)[0])
                     loss.backward()
                     optimizer.step()
@@ -271,42 +311,46 @@ class object_detector():
                     count_ls.append(count)
                     
                     running_loss += loss.item()                    
-                    if i % 20 == 19:   
-                        temp = running_loss/20
+                    if i % 10 == 9:   
+                        temp = running_loss/10
                         running_loss = 0.0
                     i += 1
             plt.plot(count_ls, loss_ls)
             plt.show(block=False)
             print('Finished Training')
-            torch.save(net.state_dict(), f=self.path + 'model')
+            
+            self.quit = None
+
+            torch.save(self.net.state_dict(), f=self.path + 'model')
             return True
 #---------------------------------testing-----------------------------------------------
-        else:
-            self.predict = []
-            #net.load_state_dict(torch.load(f=self.path + 'model'))
-            net = self.net
-            num_object = len(self.boxls)
-            frame = self.train_img
-            preprocess = transforms.Compose([transforms.Resize((200, 200)),
-                                                        transforms.ToTensor()])
-            for i in range(num_object):
-                x,y,w,h = self.boxls[i]
-                temp = frame[y:y+h, x:x+w, :]
-                temp = cv2.cvtColor(temp,cv2.COLOR_BGR2RGB)
-                image = Image.fromarray(temp)
-                img_tensor = preprocess(image)
-                img_tensor.unsqueeze_(0)
-                img_variable = Variable(img_tensor).cuda()
-                #print("i:{} \n vector:{}".format(i, np.max(net(img_variable).cpu().data.numpy()[0])))
-                if np.max(net(img_variable).cpu().data.numpy()[0]) > 0.97:
-                    out = np.argmax(net(img_variable).cpu().data.numpy()[0])
-                else:
-                    out = -1
-                cv2.rectangle(draw_img,(x,y),(x+w,y+h),(0,0,255),2)
-                cv2.putText(draw_img,str(out),(x,y),cv2.FONT_HERSHEY_SIMPLEX, 1.0,(0,0,255))
-                self.predict.append(((x, y, w, h), out))
-            self.memory.append(self.predict)
-            #print(len(self.memory.list))
+        
+    def test(self, draw_img, is_tracking=False):
+        self.predict = []
+        net = self.net
+        num_object = len(self.boxls)
+        frame = self.train_img
+        preprocess = transforms.Compose([transforms.Resize((200, 200)),
+                                                    transforms.ToTensor()])
+        for i in range(num_object):
+            x,y,w,h = self.boxls[i]
+            temp = frame[y:y+h, x:x+w, :]
+            temp = cv2.cvtColor(temp,cv2.COLOR_BGR2RGB)
+            image = Image.fromarray(temp)
+            img_tensor = preprocess(image)
+            img_tensor.unsqueeze_(0)
+            img_variable = Variable(img_tensor).cuda()
+            if np.max(net(img_variable).cpu().data.numpy()[0]) > 0.9:
+                out = np.argmax(net(img_variable).cpu().data.numpy()[0])
+            else:
+                out = -1
+            cv2.rectangle(draw_img,(x,y),(x+w,y+h),(0,0,255),2)
+            cv2.putText(draw_img,str(out),(x,y),cv2.FONT_HERSHEY_SIMPLEX, 1.0,(0,0,255))
+            self.predict.append(((x, y, w, h), out))
+        if not is_tracking:
+            self.milstone_flag = self.store(is_milestone=True)
+        # self.memory.append(self.predict)
+        #print(len(self.memory.list))
 
     
     def warp(self, img):
