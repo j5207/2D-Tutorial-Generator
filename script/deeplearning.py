@@ -31,7 +31,7 @@ ONLY_TEST = False
 
 distant = lambda (x1, y1), (x2, y2) : sqrt((x1 - x2)**2 + (y1 - y2)**2)
 
-class temp_list():
+class cache():
     def __init__(self, length):
         self.list = []
         self.length = length
@@ -42,6 +42,14 @@ class temp_list():
         else:
             del self.list[0]
             self.append(data)
+
+class node():
+    def __init__(self):
+        self.pair = None
+    
+    def add_pair(self, (id1, id2)):
+        self.pair = (id1, id2)
+        
 
 
 class object_detector(): 
@@ -62,8 +70,10 @@ class object_detector():
         self.milestone_file = open(self.path + "mileston_read.txt", "w")
         self.user_input = 0
         self.predict = None
-        self.memory = temp_list(100)
+        self.memory = cache(100)
         self.store_time = COLLECT_TIME
+
+        self.node_sequence = []
         #-----------------------create GUI-----------------------#
         self.gui_img = np.zeros((130,640,3), np.uint8)
         cv2.circle(self.gui_img,(160,50),30,(255,0,0),-1)
@@ -74,13 +84,14 @@ class object_detector():
         cv2.putText(self.gui_img,"quit",(450,110),cv2.FONT_HERSHEY_SIMPLEX, 1.0,(0,0,255))
         cv2.namedWindow('gui_img')
         cv2.setMouseCallback('gui_img',self.gui_callback)
-        
-        
+        #----------------------new coming item id------------------#
+        self.new_come_id = None
+        self.old_come_id = None
+        self.new_coming_lock = True
         #---------------------set some flag-------------------#
         self.storing = None
         self.quit = None
-        # self.saving_milstone = None
-        # self.stop_saving_milstone = None
+        self.once = True
         #---------------------set gui image----------------------#
         self.temp_surface = None
         #----------------------for easlier developing-----------------#
@@ -123,23 +134,25 @@ class object_detector():
             self.get_bound(draw_img1, thresh, hand_mask, only=False, visualization=True)
             #--------------get bags of words and training-------#
             if not ONLY_TEST:
+                #----------------------------storing image for each item---------#
                 if not self.stored_flag:
-                    #cv2.imshow('gui_img', self.gui_img)
-                    self.temp_surface = np.vstack((draw_img1, self.gui_img))
-                    
+                    self.temp_surface = np.vstack((draw_img1, self.gui_img))                    
                     self.stored_flag = self.store()
                     cv2.imshow('gui_img', self.temp_surface)
+                #--------------------------training, just once------------------#
                 if self.stored_flag and not self.trained_flag: 
                     #cv2.destroyWindow('gui_img')
                     self.trained_flag = self.train()
+                #------------------------assembling and saving milstone---------#
                 if self.trained_flag and not self.milstone_flag: 
                     self.test(draw_img2)
-                    #-----------------visualization of tracking----------
                     self.temp_surface = np.vstack((draw_img2, self.gui_img))
                     cv2.imshow('gui_img', self.temp_surface)
+                #-----------------------training saved milstone image---------#
                 if self.milstone_flag and not self.incremental_train_flag:
                     cv2.destroyWindow('gui_img')
                     self.incremental_train_flag = self.train(is_incremental=True)
+                #-----------------------finalized tracking------------------#
                 if self.incremental_train_flag and not self.tracking_flag:
                     self.test(draw_img3, is_tracking=True)
                     cv2.imshow('tracking', draw_img3)
@@ -215,9 +228,18 @@ class object_detector():
         if event == cv2.EVENT_LBUTTONDBLCLK and (self.temp_surface[y, x] == np.array([255, 0, 0])).all():
             self.storing = True
             self.user_input += 1
+            if self.user_input > 100:
+                temp_node = node()
+                if self.once:
+                    temp_node.add_pair((self.new_come_id, self.old_come_id))
+                    self.once = False
+                else:
+                    temp_node.add_pair((self.new_come_id, self.user_input))
+                self.node_sequence.append(temp_node)
             print("start")
         if event == cv2.EVENT_LBUTTONDBLCLK and (self.temp_surface[y, x] == np.array([0, 255, 0])).all():
             self.storing = False
+            self.new_coming_lock = True
             print("stop")
         if event == cv2.EVENT_LBUTTONDBLCLK and (self.temp_surface[y, x] == np.array([0, 0, 255])).all():
             self.storing = None
@@ -320,6 +342,7 @@ class object_detector():
             print('Finished Training')
             
             self.quit = None
+            self.user_input = 100
 
             torch.save(self.net.state_dict(), f=self.path + 'model')
             return True
@@ -348,6 +371,13 @@ class object_detector():
             cv2.putText(draw_img,str(out),(x,y),cv2.FONT_HERSHEY_SIMPLEX, 1.0,(0,0,255))
             self.predict.append(((x, y, w, h), out))
         if not is_tracking:
+            if self.once and num_object == 2:
+                self.new_come_id = self.predict[0][1]
+                self.old_come_id = self.predict[1][1]
+            if not self.once and num_object == 2 and self.new_coming_lock:
+                # ind = min(range(len(self.boxls)), key=lambda i:self.boxls[i][2]*self.boxls[i][3])
+                self.new_come_id = self.predict[0][1]
+                self.new_coming_lock = False
             self.milstone_flag = self.store(is_milestone=True)
         # self.memory.append(self.predict)
         #print(len(self.memory.list))
@@ -403,16 +433,6 @@ class object_detector():
     def __del__(self):
         self.cap.release()
         
-
-# def main():
-#     cap=cv2.VideoCapture(0)
-#     start_time = time.time()
-#     detector = object_detector(start_time, cap)
-#     detector.thread1.start()
-        
-#     # detector.thread1.start()
-#     cap.release()
-#     cv2.destroyAllWindows()
 
 
 def main():
