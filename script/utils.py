@@ -9,14 +9,10 @@ from PIL import Image
 from torchvision import transforms
 from torch.autograd import Variable
 import numpy as np
+import random
 
-LR = 0.0002
-BATCH_SIZE = 4
-GPU = True
-COLLECT_TIME = 1.0
-AUGMENT = False
-EPOTH = 100
-ONLY_TEST = False
+
+AUGMENT = True
 
 
 class Net(nn.Module):
@@ -24,17 +20,17 @@ class Net(nn.Module):
         super(Net, self).__init__()
         self.conv1 = nn.Conv2d(3, 10, kernel_size=5)
         self.conv2 = nn.Conv2d(10, 20, kernel_size=5)
-        self.conv3 = nn.Conv2d(20, 40, kernel_size=5)
-        self.fc1 = nn.Linear(40*21*21, 100)
+        #self.conv3 = nn.Conv2d(20, 40, kernel_size=5)
+        self.fc1 = nn.Linear(20*47*22, 100)
         self.fc2 = nn.Linear(100, 50)
-        self.fc3 = nn.Linear(50, 10)
+        self.fc3 = nn.Linear(50, 20)
 
     def forward(self, x):
         x = F.relu(F.max_pool2d(self.conv1(x), 2))
         x = F.relu(F.max_pool2d(F.dropout2d(self.conv2(x)), 2))
-        x = F.relu(F.max_pool2d(F.dropout2d(self.conv3(x)), 2))
+        # x = F.relu(F.max_pool2d(F.dropout2d(self.conv3(x)), 2))
         #print(x.size())
-        x = x.view(-1, 40*21*21)
+        x = x.view(-1, 20*47*22)
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         x = self.fc3(x)

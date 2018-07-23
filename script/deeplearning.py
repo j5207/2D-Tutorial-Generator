@@ -17,15 +17,15 @@ import random
 import tqdm
 from math import sqrt
 import matplotlib.pyplot as plt
-import Tkinter as tk
+from copy import deepcopy
 import threading
 from utils import CovnetDataset, Net
 
-LR = 0.0002
+LR = 0.0003
 BATCH_SIZE = 4
 GPU = True
+# GPU = torch.cuda.is_available()
 COLLECT_TIME = 10.0
-AUGMENT = True
 EPOTH = 50
 ONLY_TEST = False
 
@@ -44,8 +44,10 @@ class cache():
             self.append(data)
 
 class node():
+    num_instance = 0
     def __init__(self):
         self.pair = None
+        node.num_instance += 1
     
     def add_pair(self, (id1, id2)):
         self.pair = (id1, id2)
@@ -101,6 +103,7 @@ class object_detector():
             else:
                 self.net = Net().cuda()
             self.net.load_state_dict(torch.load(f=self.path + 'model'))
+            self.user_input = 10
 
 
     def update(self, save=True, train=False):
@@ -116,6 +119,7 @@ class object_detector():
             #-------------segment the object----------------#
             hsv = cv2.cvtColor(warp,cv2.COLOR_BGR2HSV)
             green_mask = cv2.inRange(hsv, np.array([57,145,0]), np.array([85,255,255]))
+            # green_mask = cv2.inRange(hsv, np.array([45,90,29]), np.array([85,255,255]))
             hand_mask = cv2.inRange(hsv, np.array([118,32,0]), np.array([153,255,255]))
             hand_mask = cv2.dilate(hand_mask, kernel = np.ones((7,7),np.uint8))
 
@@ -161,6 +165,14 @@ class object_detector():
                 self.temp_surface = np.vstack((draw_img2, self.gui_img))
                 cv2.imshow('gui_img', self.temp_surface)
                 #cv2.imshow('track', draw_img2)
+                #-----------------------training saved milstone image---------#
+                if self.milstone_flag and not self.incremental_train_flag:
+                    cv2.destroyWindow('gui_img')
+                    self.incremental_train_flag = self.train(is_incremental=True)
+                #-----------------------finalized tracking------------------#
+                if self.incremental_train_flag and not self.tracking_flag:
+                    self.test(draw_img3, is_tracking=True)
+                    cv2.imshow('tracking', draw_img3)
         
     def get_bound(self, img, object_mask, hand_mask, only=True, visualization=True):
         (_,object_contours, object_hierarchy)=cv2.findContours(object_mask,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
@@ -225,10 +237,10 @@ class object_detector():
 
      
     def gui_callback(self, event, x, y, flags, param):
-        if event == cv2.EVENT_LBUTTONDBLCLK and (self.temp_surface[y, x] == np.array([255, 0, 0])).all():
-            self.storing = True
+        if event == cv2.EVENT_LBUTTONDBLCLK and (self.temp_surface[y, x] == np.array([255, 0, 0])).all() and not self.storing:
             self.user_input += 1
-            if self.user_input > 100:
+            self.storing = True
+            if self.user_input > 10:
                 temp_node = node()
                 if self.once:
                     temp_node.add_pair((self.new_come_id, self.old_come_id))
@@ -237,7 +249,7 @@ class object_detector():
                     temp_node.add_pair((self.new_come_id, self.user_input))
                 self.node_sequence.append(temp_node)
             print("start")
-        if event == cv2.EVENT_LBUTTONDBLCLK and (self.temp_surface[y, x] == np.array([0, 255, 0])).all():
+        if event == cv2.EVENT_LBUTTONDBLCLK and (self.temp_surface[y, x] == np.array([0, 255, 0])).all() and self.storing:
             self.storing = False
             self.new_coming_lock = True
             print("stop")
@@ -286,9 +298,6 @@ class object_detector():
     
         
     def train(self, is_incremental=False):
-        #criterion = nn.CrossEntropyLoss()
-        
-        #optimizer = optim.Adam(self.net.parameters(), lr=LR)
         if not is_incremental:
             reader_train = self.reader(self.path, "read.txt")
             if not GPU:
@@ -296,10 +305,14 @@ class object_detector():
             else:
                 self.net = Net().cuda()
         else:
+            # if not GPU:
+            #     self.net = Net()
+            # else:
+            #     self.net = Net().cuda()
             reader_train = self.reader(self.path, "mileston_read.txt")
             self.net.load_state_dict(torch.load(f=self.path + 'model'))
         optimizer = optim.SGD(self.net.parameters(), lr=LR, momentum=0.9)
-        trainset = CovnetDataset(reader=reader_train, transforms=transforms.Compose([transforms.Resize((200, 200)),
+        trainset = CovnetDataset(reader=reader_train, transforms=transforms.Compose([transforms.Resize((200, 100)),
                                                                                             transforms.ToTensor()
                                                                                     ]))
         trainloader = DataLoader(dataset=trainset, batch_size=BATCH_SIZE, shuffle=True, num_workers=2)
@@ -323,6 +336,8 @@ class object_detector():
                     optimizer.zero_grad()
                     # forward + backward + optimize
                     outputs = self.net(inputs)
+                    # print(outputs)
+                    # print(labels.view(1, -1)[0])
                     loss = F.cross_entropy(outputs, labels.view(1, -1)[0])
                     loss.backward()
                     optimizer.step()
@@ -342,7 +357,7 @@ class object_detector():
             print('Finished Training')
             
             self.quit = None
-            self.user_input = 100
+            self.user_input = 10
 
             torch.save(self.net.state_dict(), f=self.path + 'model')
             return True
@@ -353,7 +368,7 @@ class object_detector():
         net = self.net
         num_object = len(self.boxls)
         frame = self.train_img
-        preprocess = transforms.Compose([transforms.Resize((200, 200)),
+        preprocess = transforms.Compose([transforms.Resize((200, 100)),
                                                     transforms.ToTensor()])
         for i in range(num_object):
             x,y,w,h = self.boxls[i]
@@ -363,10 +378,17 @@ class object_detector():
             img_tensor = preprocess(image)
             img_tensor.unsqueeze_(0)
             img_variable = Variable(img_tensor).cuda()
-            if np.max(net(img_variable).cpu().data.numpy()[0]) > 0.9:
+            if GPU:
+                img_variable = Variable(img_tensor).cuda()
                 out = np.argmax(net(img_variable).cpu().data.numpy()[0])
             else:
-                out = -1
+                # FIX
+                img_variable = Variable(img_tensor)
+                out = np.argmax(net(img_variable).data.numpy()[0])
+            # if np.max(net(img_variable).cpu().data.numpy()[0]) > 0.9:
+            #     out = np.argmax(net(img_variable).cpu().data.numpy()[0])
+            # else:
+            #     out = -1
             cv2.rectangle(draw_img,(x,y),(x+w,y+h),(0,0,255),2)
             cv2.putText(draw_img,str(out),(x,y),cv2.FONT_HERSHEY_SIMPLEX, 1.0,(0,0,255))
             self.predict.append(((x, y, w, h), out))
@@ -374,17 +396,20 @@ class object_detector():
             if self.once and num_object == 2:
                 self.new_come_id = self.predict[0][1]
                 self.old_come_id = self.predict[1][1]
+                print("new_come_id:{}, old_come_id:{}".format(self.new_come_id, self.old_come_id))
             if not self.once and num_object == 2 and self.new_coming_lock:
                 # ind = min(range(len(self.boxls)), key=lambda i:self.boxls[i][2]*self.boxls[i][3])
-                self.new_come_id = self.predict[0][1]
+                self.new_come_id = self.predict[-1][1]
                 self.new_coming_lock = False
+                print("new_come_id:{}, new_coming_lock:{}".format(self.new_come_id, self.new_coming_lock))
             self.milstone_flag = self.store(is_milestone=True)
         # self.memory.append(self.predict)
         #print(len(self.memory.list))
 
     
     def warp(self, img):
-        pts1 = np.float32([[115,124],[520,112],[2,476],[640,480]])
+        # pts1 = np.float32([[115,124],[520,112],[2,476],[640,480]])
+        pts1 = np.float32([[75,140],[503,99],[0,480],[640,480]])
         pts2 = np.float32([[0,0],[640,0],[0,480],[640,480]])
         M = cv2.getPerspectiveTransform(pts1,pts2)
         dst = cv2.warpPerspective(img,M,(640,480))
