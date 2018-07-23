@@ -20,6 +20,8 @@ import matplotlib.pyplot as plt
 from copy import deepcopy
 import threading
 from utils import CovnetDataset, Net
+from statistics import mode
+
 
 LR = 0.0003
 BATCH_SIZE = 4
@@ -27,7 +29,7 @@ GPU = True
 # GPU = torch.cuda.is_available()
 COLLECT_TIME = 10.0
 EPOTH = 50
-ONLY_TEST = False
+ONLY_TEST = True
 
 distant = lambda (x1, y1), (x2, y2) : sqrt((x1 - x2)**2 + (y1 - y2)**2)
 
@@ -35,6 +37,7 @@ class cache():
     def __init__(self, length):
         self.list = []
         self.length = length
+        self.full = False
     
     def append(self, data):
         if len(self.list) < self.length:
@@ -42,15 +45,26 @@ class cache():
         else:
             del self.list[0]
             self.append(data)
+            self.full = True
+
+    def clear(self):
+        self.list = []
+        self.full = False
 
 class node():
     num_instance = 0
-    def __init__(self):
-        self.pair = None
-        node.num_instance += 1
-    
-    def add_pair(self, (id1, id2)):
+    instance_list = []
+    pair_list = []
+    def __init__(self, (id1, id2), outcome):
         self.pair = (id1, id2)
+        self.outcome = outcome
+        node.num_instance += 1
+        node.instance_list.append(self)
+        node.pair_list.append(self.pair)
+        print(self)
+
+    def __str__(self):
+        return "this is the {} node, contains {}".format(node.num_instance, self.pair)
         
 
 
@@ -72,7 +86,8 @@ class object_detector():
         self.milestone_file = open(self.path + "mileston_read.txt", "w")
         self.user_input = 0
         self.predict = None
-        self.memory = cache(100)
+        self.memory = cache(10)
+        self.memory1 = cache(10)
         self.store_time = COLLECT_TIME
 
         self.node_sequence = []
@@ -85,11 +100,14 @@ class object_detector():
         cv2.circle(self.gui_img,(480,50),30,(0,0,255),-1)
         cv2.putText(self.gui_img,"quit",(450,110),cv2.FONT_HERSHEY_SIMPLEX, 1.0,(0,0,255))
         cv2.namedWindow('gui_img')
+        cv2.namedWindow('gui_img1')
         cv2.setMouseCallback('gui_img',self.gui_callback)
+        cv2.setMouseCallback('gui_img1',self.gui_callback)
         #----------------------new coming item id------------------#
         self.new_come_id = None
         self.old_come_id = None
         self.new_coming_lock = True
+        self.once_lock = True
         #---------------------set some flag-------------------#
         self.storing = None
         self.quit = None
@@ -145,16 +163,16 @@ class object_detector():
                     cv2.imshow('gui_img', self.temp_surface)
                 #--------------------------training, just once------------------#
                 if self.stored_flag and not self.trained_flag: 
-                    #cv2.destroyWindow('gui_img')
+                    cv2.destroyWindow('gui_img')
                     self.trained_flag = self.train()
                 #------------------------assembling and saving milstone---------#
                 if self.trained_flag and not self.milstone_flag: 
                     self.test(draw_img2)
                     self.temp_surface = np.vstack((draw_img2, self.gui_img))
-                    cv2.imshow('gui_img', self.temp_surface)
+                    cv2.imshow('gui_img1', self.temp_surface)
                 #-----------------------training saved milstone image---------#
                 if self.milstone_flag and not self.incremental_train_flag:
-                    cv2.destroyWindow('gui_img')
+                    cv2.destroyWindow('gui_img1')
                     self.incremental_train_flag = self.train(is_incremental=True)
                 #-----------------------finalized tracking------------------#
                 if self.incremental_train_flag and not self.tracking_flag:
@@ -241,12 +259,11 @@ class object_detector():
             self.user_input += 1
             self.storing = True
             if self.user_input > 10:
-                temp_node = node()
                 if self.once:
-                    temp_node.add_pair((self.new_come_id, self.old_come_id))
+                    temp_node = node((self.new_come_id, self.old_come_id), self.user_input)
                     self.once = False
                 else:
-                    temp_node.add_pair((self.new_come_id, self.user_input))
+                    temp_node = node((self.new_come_id, self.user_input - 1), self.user_input)
                 self.node_sequence.append(temp_node)
             print("start")
         if event == cv2.EVENT_LBUTTONDBLCLK and (self.temp_surface[y, x] == np.array([0, 255, 0])).all() and self.storing:
@@ -358,8 +375,10 @@ class object_detector():
             
             self.quit = None
             self.user_input = 10
-
-            torch.save(self.net.state_dict(), f=self.path + 'model')
+            if not is_incremental:
+                torch.save(self.net.state_dict(), f=self.path + 'model')
+            else:
+                torch.save(self.net.state_dict(), f=self.path + 'milestone_model')
             return True
 #---------------------------------testing-----------------------------------------------
         
@@ -382,7 +401,6 @@ class object_detector():
                 img_variable = Variable(img_tensor).cuda()
                 out = np.argmax(net(img_variable).cpu().data.numpy()[0])
             else:
-                # FIX
                 img_variable = Variable(img_tensor)
                 out = np.argmax(net(img_variable).data.numpy()[0])
             # if np.max(net(img_variable).cpu().data.numpy()[0]) > 0.9:
@@ -393,15 +411,32 @@ class object_detector():
             cv2.putText(draw_img,str(out),(x,y),cv2.FONT_HERSHEY_SIMPLEX, 1.0,(0,0,255))
             self.predict.append(((x, y, w, h), out))
         if not is_tracking:
-            if self.once and num_object == 2:
-                self.new_come_id = self.predict[0][1]
-                self.old_come_id = self.predict[1][1]
-                print("new_come_id:{}, old_come_id:{}".format(self.new_come_id, self.old_come_id))
+            
+            if self.once and num_object == 2 and self.once_lock:
+                self.memory.append(self.predict[0][1])
+                self.memory1.append(self.predict[-1][1])
+                if self.memory.full:
+                    self.new_come_id = max(set(self.memory.list), key=self.memory.list.count)
+                                                   
+                if self.memory1.full:
+                    self.old_come_id = max(set(self.memory1.list), key=self.memory1.list.count)
+                    
+                # self.new_come_id = self.predict[0][1]
+                # self.old_come_id = self.predict[1][1]
+                if self.memory.full and self.memory1.full:
+                    self.once_lock = False
+                    self.memory.clear()
+                    self.memory1.clear()
+                    #print("new_come_id:{}, old_come_id:{}".format(self.new_come_id, self.old_come_id))
+            
             if not self.once and num_object == 2 and self.new_coming_lock:
+                self.memory.append(self.predict[-1][1])
                 # ind = min(range(len(self.boxls)), key=lambda i:self.boxls[i][2]*self.boxls[i][3])
-                self.new_come_id = self.predict[-1][1]
-                self.new_coming_lock = False
-                print("new_come_id:{}, new_coming_lock:{}".format(self.new_come_id, self.new_coming_lock))
+                if self.memory.full:
+                    self.new_come_id = max(set(self.memory.list), key=self.memory.list.count)
+                    self.new_coming_lock = False
+                    self.memory.clear()
+                    #print("new_come_id:{}, new_coming_lock:{}".format(self.new_come_id, self.new_coming_lock))
             self.milstone_flag = self.store(is_milestone=True)
         # self.memory.append(self.predict)
         #print(len(self.memory.list))
