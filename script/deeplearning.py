@@ -29,7 +29,7 @@ GPU = torch.cuda.is_available()
 EPOTH = 100
 
 # MODE could be 'train', 'test',  'all'
-MODE = 'all'
+MODE = 'train'
 
 distant = lambda (x1, y1), (x2, y2) : sqrt((x1 - x2)**2 + (y1 - y2)**2)
 
@@ -351,10 +351,12 @@ class object_detector():
             reader_train = self.reader(self.path, "mileston_read.txt")
             #self.net.load_state_dict(torch.load(f=self.path + 'model'))
         optimizer = optim.SGD(self.net.parameters(), lr=LR, momentum=0.9)
-        trainset = CovnetDataset(reader=reader_train, transforms=transforms.Compose([transforms.Resize((200, 100)),
-                                                                                            transforms.ToTensor()
-                                                                                    ]))
-        # trainset = CovnetDataset(reader=reader_train, transforms=transforms.ToTensor())
+        # trainset = CovnetDataset(reader=reader_train, transforms=transforms.Compose([transforms.Resize((200, 100)),
+        #                                                                                     transforms.ToTensor()
+        #                                                                             ]))
+        trainset = CovnetDataset(reader=reader_train, transforms=transforms.Compose([transforms.Pad(30),
+                                                                                             transforms.ToTensor()
+                                                                                     ]))
         trainloader = DataLoader(dataset=trainset, batch_size=BATCH_SIZE, shuffle=True, num_workers=2)
 #-----------------------------------training----------------------------------------------------------------        
         if True:
@@ -413,9 +415,10 @@ class object_detector():
         net = self.net
         num_object = len(self.boxls)
         frame = self.train_img
-        preprocess = transforms.Compose([transforms.Resize((200, 100)),
-                                                    transforms.ToTensor()])
-        # preprocess = transforms.ToTensor()
+        # preprocess = transforms.Compose([transforms.Resize((200, 100)),
+        #                                             transforms.ToTensor()])
+        preprocess = transforms.Compose([transforms.Pad(30),
+                                                     transforms.ToTensor()])
         for i in range(num_object):
             x,y,w,h = self.boxls[i]
             temp = frame[y:y+h, x:x+w, :]
