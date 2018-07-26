@@ -22,14 +22,14 @@ from utils import CovnetDataset, Net, BATCH_SIZE
 from statistics import mode
 
 
-LR = 0.0003
+LR = 0.0002
 
 #GPU = False
 GPU = torch.cuda.is_available()
-EPOTH = 100
+EPOTH = 50
 
 # MODE could be 'train', 'test',  'all'
-MODE = 'train'
+MODE = 'all'
 
 distant = lambda (x1, y1), (x2, y2) : sqrt((x1 - x2)**2 + (y1 - y2)**2)
 
@@ -139,18 +139,19 @@ class object_detector():
 
             #-------------segment the object----------------#
             hsv = cv2.cvtColor(warp,cv2.COLOR_BGR2HSV)
-            green_mask = cv2.inRange(hsv, np.array([64,138,69]), np.array([87,238,255]))
+            green_mask = cv2.inRange(hsv, np.array([61,110,92]), np.array([84,255,255]))
             # green_mask = cv2.inRange(hsv, np.array([45,90,29]), np.array([85,255,255]))
             hand_mask = cv2.inRange(hsv, np.array([118,32,0]), np.array([153,255,255]))
             hand_mask = cv2.dilate(hand_mask, kernel = np.ones((7,7),np.uint8))
 
-            skin_mask = cv2.inRange(hsv, np.array([0,52,0]), np.array([56,255,255]))
+            skin_mask = cv2.inRange(hsv, np.array([0,8,132]), np.array([18,141,255]))
             skin_mask = cv2.dilate(skin_mask, kernel = np.ones((5,5),np.uint8))
 
             thresh = 255 - green_mask
             thresh = cv2.subtract(thresh, hand_mask)
             thresh = cv2.subtract(thresh, skin_mask)
-
+            thresh[477:, 50:610] = 0
+            cv2.imshow('afg', thresh)
             draw_img1 = warp.copy()
             draw_img2 = warp.copy()
             draw_img3 = warp.copy()
@@ -337,6 +338,7 @@ class object_detector():
     
         
     def train(self, is_incremental=False):
+        start_time = time.time()
         if not is_incremental:
             reader_train = self.reader(self.path, "read.txt")
             if not GPU:
@@ -397,7 +399,7 @@ class object_detector():
                     i += 1
             plt.plot(count_ls, loss_ls)
             plt.show(block=False)
-            print('Finished Training')
+            print('Finished Training, using {}'.format(time.time() - start_time))
             
             self.quit = None
             
@@ -473,8 +475,8 @@ class object_detector():
 
     
     def warp(self, img):
-        # pts1 = np.float32([[115,124],[520,112],[2,476],[640,480]])
-        pts1 = np.float32([[71,138],[498,108],[0,480],[631,461]])
+        #pts1 = np.float32([[115,124],[520,112],[2,476],[640,480]])
+        pts1 = np.float32([[101,160],[531,133],[0,480],[640,480]])
         pts2 = np.float32([[0,0],[640,0],[0,480],[640,480]])
         M = cv2.getPerspectiveTransform(pts1,pts2)
         dst = cv2.warpPerspective(img,M,(640,480))

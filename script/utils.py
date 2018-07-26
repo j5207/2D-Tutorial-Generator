@@ -59,7 +59,7 @@ class Net(nn.Module):
         x = F.relu(F.max_pool2d(F.dropout2d(self.conv2(x)), 2))
         x = self.conv3(x)
         spp = spatial_pyramid_pool(x,int(x.size(0)),[int(x.size(2)),int(x.size(3))],output_vector)
-        print(spp.size())
+        #print(spp.size())
         x = F.relu(self.fc1(spp))
         #x = x.view(-1, 20*47*22)
         #x = F.relu(self.fc1(x))
