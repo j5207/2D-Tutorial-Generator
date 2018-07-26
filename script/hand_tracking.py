@@ -2,10 +2,11 @@ import cv2
 import numpy as np
 
 class hand_tracking():
-    def __init__(self, cap):
+    def __init__(self, image):
+        frame = image.copy()
         self.radius_thresh = 0.02
 
-        _, frame = cap.read()
+        # _, frame = cap.read()
         blur = cv2.blur(frame,(3,3))
         hsv = cv2.cvtColor(blur,cv2.COLOR_BGR2HSV)
         kernal = np.ones((3 ,3), "uint8")
@@ -29,8 +30,8 @@ class hand_tracking():
 
         _, contours, _ = cv2.findContours(mask,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)  
         self.hand_cnt = [] 
-        
-
+        self.only_point = None
+        self.center = None
         max_area=1200
         try:	
             for i in range(len(contours)):
@@ -58,9 +59,9 @@ class hand_tracking():
             pass
                 
         cv2.imshow('hand_tracking',frame) 
-
     def get_result(self):
-        return self.hand_cnt
+        # return self.hand_cnt
+        return self.only_point, self.center
 
     def mark_hand_center(self, frame_in,cont):    
         max_d=0
@@ -116,7 +117,7 @@ class hand_tracking():
                 finger.remove((finger[temp_len-i][0],finger[temp_len-i][1]))
         
         palm=[(cx,cy),radius]
-
+        self.center = (cx, cy)
         if(first_iteration):
             finger_ct_history[0]=finger_ct_history[1]=len(finger)
             first_iteration=False
@@ -135,6 +136,7 @@ class hand_tracking():
 
         if finger_count == 1:
             cv2.putText(frame_in,"pointing",(int(0.38*frame_in.shape[1]),int(0.12*frame_in.shape[0])),cv2.FONT_HERSHEY_DUPLEX,1,(0,255,255),1,8)
+            self.only_point = finger[0]
 
         for k in range(len(finger)):
             cv2.circle(frame_in,finger[k],10,255,2)
@@ -158,12 +160,12 @@ class hand_tracking():
 
 
 
-if __name__ == '__main__':
-    cap = cv2.VideoCapture(0)
-    while True:
-        hand_tracking(cap)
-        k = cv2.waitKey(1) & 0xFF # large wait time to remove freezing
-        if k == 113 or k == 27:
-            break
-    cap.release()
-    cv2.destroyAllWindows()
+# if __name__ == '__main__':
+#     cap = cv2.VideoCapture(0)
+#     while True:
+#         hand_tracking(cap)
+#         k = cv2.waitKey(1) & 0xFF # large wait time to remove freezing
+#         if k == 113 or k == 27:
+#             break
+#     cap.release()
+#     cv2.destroyAllWindows()

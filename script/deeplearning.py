@@ -19,17 +19,18 @@ import matplotlib.pyplot as plt
 from copy import deepcopy
 import pickle
 from utils import CovnetDataset, Net, BATCH_SIZE
-from statistics import mode
+from hand_tracking import hand_tracking
+from shapely.geometry import Polygon
 
 
 LR = 0.0002
 
 #GPU = False
 GPU = torch.cuda.is_available()
-EPOTH = 50
+EPOTH = 30
 
 # MODE could be 'train', 'test',  'all'
-MODE = 'all'
+MODE = 'test'
 
 distant = lambda (x1, y1), (x2, y2) : sqrt((x1 - x2)**2 + (y1 - y2)**2)
 
@@ -139,14 +140,16 @@ class object_detector():
 
             #-------------segment the object----------------#
             hsv = cv2.cvtColor(warp,cv2.COLOR_BGR2HSV)
-            green_mask = cv2.inRange(hsv, np.array([61,110,92]), np.array([84,255,255]))
+            green_mask = cv2.inRange(hsv, np.array([63,101,61]), np.array([86,255,255]))
             # green_mask = cv2.inRange(hsv, np.array([45,90,29]), np.array([85,255,255]))
             hand_mask = cv2.inRange(hsv, np.array([118,32,0]), np.array([153,255,255]))
             hand_mask = cv2.dilate(hand_mask, kernel = np.ones((7,7),np.uint8))
 
-            skin_mask = cv2.inRange(hsv, np.array([0,8,132]), np.array([18,141,255]))
-            skin_mask = cv2.dilate(skin_mask, kernel = np.ones((5,5),np.uint8))
+            skin_mask = cv2.inRange(hsv, np.array([0,36,0]), np.array([17,255,255]))
+            skin_mask = cv2.dilate(skin_mask, kernel = np.ones((7,7),np.uint8))
 
+            
+            
             thresh = 255 - green_mask
             thresh = cv2.subtract(thresh, hand_mask)
             thresh = cv2.subtract(thresh, skin_mask)
@@ -231,7 +234,7 @@ class object_detector():
         if len(object_contours) > 0:
             for i , contour in enumerate(object_contours):
                 area = cv2.contourArea(contour)
-                if area>600 and area < 100000 and object_hierarchy[0, i, 3] == -1:					
+                if area>100 and area < 100000 and object_hierarchy[0, i, 3] == -1:					
                     M = cv2.moments(contour)
                     cx = int(M['m10']/M['m00'])
                     cy = int(M['m01']/M['m00'])
@@ -303,14 +306,18 @@ class object_detector():
         #     self.user_input += 1
 
     def store(self, is_milestone=False):
+        # if is_milestone:
+        #     file = self.milestone_file
+        #     img_dir = os.path.join(self.path + "milestone_image", str(self.count) + ".jpg")
+        #     self.createFolder(self.path + "milestone_image")
+        # else:
         if is_milestone:
-            file = self.milestone_file
-            img_dir = os.path.join(self.path + "milestone_image", str(self.count) + ".jpg")
-            self.createFolder(self.path + "milestone_image")
+            self.file = open(self.path + "read.txt", "a")
+            img_dir = os.path.join(self.path + "image", "milstone" + str(self.user_input)+str(self.count) + ".jpg")
         else:
-            file = self.file
             img_dir = os.path.join(self.path + "image", str(self.user_input)+str(self.count) + ".jpg")
-            self.createFolder(self.path + "image")
+        file = self.file
+        self.createFolder(self.path + "image")
         if self.quit:
                 file.close()
                 print('finish output')               
@@ -346,19 +353,19 @@ class object_detector():
             else:
                 self.net = Net().cuda()
         else:
-            # if not GPU:
-            #     self.net = Net()
-            # else:
-            #     self.net = Net().cuda()
-            reader_train = self.reader(self.path, "mileston_read.txt")
-            #self.net.load_state_dict(torch.load(f=self.path + 'model'))
+            if not GPU:
+                self.net = Net()
+            else:
+                self.net = Net().cuda()
+            reader_train = self.reader(self.path, "read.txt")
+            self.net.load_state_dict(torch.load(f=self.path + 'model'))
         optimizer = optim.SGD(self.net.parameters(), lr=LR, momentum=0.9)
-        # trainset = CovnetDataset(reader=reader_train, transforms=transforms.Compose([transforms.Resize((200, 100)),
-        #                                                                                     transforms.ToTensor()
-        #                                                                             ]))
-        trainset = CovnetDataset(reader=reader_train, transforms=transforms.Compose([transforms.Pad(30),
-                                                                                             transforms.ToTensor()
-                                                                                     ]))
+        trainset = CovnetDataset(reader=reader_train, transforms=transforms.Compose([transforms.Resize((200, 100)),
+                                                                                            transforms.ToTensor()
+                                                                                    ]))
+        # trainset = CovnetDataset(reader=reader_train, transforms=transforms.Compose([transforms.Pad(30),
+        #                                                                                      transforms.ToTensor()
+        #                                                                              ]))
         trainloader = DataLoader(dataset=trainset, batch_size=BATCH_SIZE, shuffle=True, num_workers=2)
 #-----------------------------------training----------------------------------------------------------------        
         if True:
@@ -399,7 +406,7 @@ class object_detector():
                     i += 1
             plt.plot(count_ls, loss_ls)
             plt.show(block=False)
-            print('Finished Training, using {}'.format(time.time() - start_time))
+            print('Finished Training, using {} second'.format(int(time.time() - start_time)))
             
             self.quit = None
             
@@ -409,6 +416,12 @@ class object_detector():
             else:
                 torch.save(self.net.state_dict(), f=self.path + 'milestone_model')
                 pickle.dump(node.pair_list ,open("node.p", "wb"))
+                try:
+                    node_file = open(self.path + "node.txt", "w")
+                    for pair in node.pair_list: 
+                        node_file.write(str(pair[0]) + "" + str(pair[1]) + "\n")
+                except:
+                    print("fail to save")
             return True
 #---------------------------------testing-----------------------------------------------
         
@@ -417,10 +430,10 @@ class object_detector():
         net = self.net
         num_object = len(self.boxls)
         frame = self.train_img
-        # preprocess = transforms.Compose([transforms.Resize((200, 100)),
-        #                                             transforms.ToTensor()])
-        preprocess = transforms.Compose([transforms.Pad(30),
-                                                     transforms.ToTensor()])
+        preprocess = transforms.Compose([transforms.Resize((200, 100)),
+                                                    transforms.ToTensor()])
+        # preprocess = transforms.Compose([transforms.Pad(30),
+        #                                              transforms.ToTensor()])
         for i in range(num_object):
             x,y,w,h = self.boxls[i]
             temp = frame[y:y+h, x:x+w, :]
@@ -443,37 +456,66 @@ class object_detector():
             cv2.putText(draw_img,str(out),(x,y),cv2.FONT_HERSHEY_SIMPLEX, 1.0,(0,0,255))
             self.predict.append(((x, y, w, h), out))
         if not is_tracking:
-            
-            if self.once and num_object == 2 and self.once_lock:
-                self.memory.append(self.predict[0][1])
-                self.memory1.append(self.predict[-1][1])
-                if self.memory.full:
-                    self.new_come_id = max(set(self.memory.list), key=self.memory.list.count)
-                                                   
-                if self.memory1.full:
-                    self.old_come_id = max(set(self.memory1.list), key=self.memory1.list.count)
-                    
-                # self.new_come_id = self.predict[0][1]
-                # self.old_come_id = self.predict[1][1]
-                if self.memory.full and self.memory1.full:
-                    self.once_lock = False
-                    self.memory.clear()
-                    self.memory1.clear()
-                    #print("new_come_id:{}, old_come_id:{}".format(self.new_come_id, self.old_come_id))
-            
-            if not self.once and num_object == 2 and self.new_coming_lock:
-                self.memory.append(self.predict[-1][1])
-                # ind = min(range(len(self.boxls)), key=lambda i:self.boxls[i][2]*self.boxls[i][3])
-                if self.memory.full:
-                    self.new_come_id = max(set(self.memory.list), key=self.memory.list.count)
-                    self.new_coming_lock = False
-                    self.memory.clear()
-                    #print("new_come_id:{}, new_coming_lock:{}".format(self.new_come_id, self.new_coming_lock))
+            self.store_side(frame)
+            self.get_pair(num_object)
             self.milstone_flag = self.store(is_milestone=True)
+            
         # self.memory.append(self.predict)
         #print(len(self.memory.list))
 
     
+    def store_side(self, frame):
+        img = frame.copy()
+        point, center = hand_tracking(img).get_result()
+        if point:
+            hsv = cv2.cvtColor(img,cv2.COLOR_BGR2HSV)
+            tape_mask = cv2.inRange(hsv, np.array([103,41,63]), np.array([118,255,255]))
+            kernal = np.ones((3 ,3), "uint8")
+            mask = cv2.dilate(tape_mask, kernal)
+            length_ls = []        
+            _, contours, _ = cv2.findContours(mask,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+            for i in range(len(contours)):
+                cnt=contours[i]                
+                M = cv2.moments(cnt)
+                x = int(M['m10']/M['m00'])
+                y = int(M['m01']/M['m00'])
+                length_ls.append((self.get_k_dis((point[0], point[1]), (center[0], center[1]), (x, y)), (x, y)))
+            x,y = min(length_ls, key=lambda x: x[0])[1]
+            cv2.circle(img, (x,y), 1, [255, 0, 0], 1)
+            cv2.imshow("point", img)
+            print(x, y)
+            
+
+
+    def get_pair(self, num_object):
+        if self.once and num_object == 2 and self.once_lock and self.predict[0][1] != self.predict[1][1]:
+            self.memory.append(self.predict[0][1])
+            self.memory1.append(self.predict[1][1])
+            if self.memory.full:
+                self.new_come_id = max(set(self.memory.list), key=self.memory.list.count)
+                                                
+            if self.memory1.full:
+                self.old_come_id = max(set(self.memory1.list), key=self.memory1.list.count)
+                
+            if self.memory.full and self.memory1.full:
+                self.once_lock = False
+                self.memory.clear()
+                self.memory1.clear()
+                print("new_come_id:{}, old_come_id:{}".format(self.new_come_id, self.old_come_id))
+        
+        if not self.once and num_object == 2 and self.new_coming_lock:
+            self.memory.append(self.predict[-1][1])
+            # ind = min(range(len(self.boxls)), key=lambda i:self.boxls[i][2]*self.boxls[i][3])
+            if self.memory.full:
+                self.new_come_id = max(set(self.memory.list), key=self.memory.list.count)
+                self.new_coming_lock = False
+                self.memory.clear()
+                print("new_come_id:{}, new_coming_lock:{}".format(self.new_come_id, self.new_coming_lock))       
+
+
+
+
+
     def warp(self, img):
         #pts1 = np.float32([[115,124],[520,112],[2,476],[640,480]])
         pts1 = np.float32([[101,160],[531,133],[0,480],[640,480]])
@@ -482,6 +524,13 @@ class object_detector():
         dst = cv2.warpPerspective(img,M,(640,480))
         return dst
             
+
+    @staticmethod
+    def get_k_dis((x1, y1), (x2, y2), (x, y)):
+        coord = ((x, y), (x1, y1), (x2, y2))
+        return Polygon(coord).area / distant((x1, y1), (x2, y2))
+
+
 
 
     @staticmethod
