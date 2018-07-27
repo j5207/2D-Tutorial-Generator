@@ -11,6 +11,7 @@ from torch.autograd import Variable
 import numpy as np
 import random
 import math
+import cv2
 
 AUGMENT = True
 BATCH_SIZE = 4
@@ -74,6 +75,31 @@ class CovnetDataset(Dataset):
         return (img1, result)
     def __len__(self):
         return len(self.reader)
+
+def side_finder(frame, color):
+    hsv = cv2.cvtColor(frame,cv2.COLOR_BGR2HSV)
+    red = [np.array([172,62,0]), np.array([180,255,255])]
+    blue = [np.array([100,118,112]), np.array([113,255,255])]
+    if color == 'red':
+        mask = cv2.inRange(hsv, *red)
+    elif color == 'blue':
+        mask = cv2.inRange(hsv, *blue)
+    else:
+        raise NameError('red or blue')
+    kernal = np.ones((3 ,3), "uint8")
+    mask = cv2.dilate(mask, kernal)   
+    _, contours, hierarchy = cv2.findContours(mask,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+    center_list = []
+    for i , contour in enumerate(contours):
+        area = cv2.contourArea(contour)
+        if area > 100 and hierarchy[0, i, 3] == -1:					
+            M = cv2.moments(contour)
+            cx = int(M['m10']/M['m00'])
+            cy = int(M['m01']/M['m00'])
+            # cv2.circle(frame, (cx, cy), 10, [0, 255, 0])
+            center_list.append((cx, cy))
+    return center_list
+
 # from __future__ import division
 # import torch.nn as nn
 # import torch.nn.functional as F

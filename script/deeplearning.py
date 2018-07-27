@@ -18,7 +18,7 @@ from math import sqrt
 import matplotlib.pyplot as plt
 from copy import deepcopy
 import pickle
-from utils import CovnetDataset, Net, BATCH_SIZE
+from utils import CovnetDataset, Net, BATCH_SIZE, side_finder
 from hand_tracking import hand_tracking
 from shapely.geometry import Polygon
 
@@ -468,22 +468,16 @@ class object_detector():
         img = frame.copy()
         point, center = hand_tracking(img).get_result()
         if point:
-            hsv = cv2.cvtColor(img,cv2.COLOR_BGR2HSV)
-            tape_mask = cv2.inRange(hsv, np.array([103,41,63]), np.array([118,255,255]))
-            kernal = np.ones((3 ,3), "uint8")
-            mask = cv2.dilate(tape_mask, kernal)
-            length_ls = []        
-            _, contours, _ = cv2.findContours(mask,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
-            for i in range(len(contours)):
-                cnt=contours[i]                
-                M = cv2.moments(cnt)
-                x = int(M['m10']/M['m00'])
-                y = int(M['m01']/M['m00'])
+            red_center = side_finder(img, color='red')
+            blue_center = side_finder(img, color='blue')
+            tape = red_center + blue_center
+            length_ls = []
+            for (x, y) in tape:
                 length_ls.append((self.get_k_dis((point[0], point[1]), (center[0], center[1]), (x, y)), (x, y)))
             x,y = min(length_ls, key=lambda x: x[0])[1]
-            cv2.circle(img, (x,y), 1, [255, 0, 0], 1)
-            cv2.imshow("point", img)
-            print(x, y)
+            cv2.circle(img, (x,y), 10, [255, 255, 0], -1)
+
+        cv2.imshow("point", img)
             
 
 
