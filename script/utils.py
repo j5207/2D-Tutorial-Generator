@@ -100,6 +100,13 @@ def side_finder(frame, color):
             center_list.append((cx, cy))
     return center_list
 
+def test_insdie(point, boundingbox_list):
+    cx, cy = point
+    for i, boundingbox in enumerate(boundingbox_list):
+        x,y,w,h = boundingbox
+        if cx > x and cx < x+w and cy > y and cy < y+h:
+            return i
+
 # from __future__ import division
 # import torch.nn as nn
 # import torch.nn.functional as F

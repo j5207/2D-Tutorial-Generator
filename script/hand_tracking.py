@@ -113,8 +113,6 @@ class hand_tracking():
                 cv2.putText(frame_in,"pointing",(int(0.38*frame_in.shape[1]),int(0.12*frame_in.shape[0])),cv2.FONT_HERSHEY_DUPLEX,1,(0,255,255),1,8)
                 self.only_point = finger[0]
 
-
-        # if finger_count == 1:
             
 
         for k in range(len(finger)):
@@ -130,19 +128,6 @@ class hand_tracking():
         dst = cv2.warpPerspective(img,M,(640,480))
         return dst
     
-    # def finger(self, hull, frame):
-    #     j = 0
-    #     for i in range(len(hull)):
-    #         dist = np.sqrt((hull[-i][0][0] - hull[-i+1][0][0])**2 + (hull[-i][0][1] - hull[-i+1][0][1])**2)
-    #         if dist>8 and dist<22:
-    #             if j==0 :
-    #                 finger=[(hull[-i][0][0],hull[-i][0][1])]
-    #             else:
-    #                 finger.append((hull[-i][0][0],hull[-i][0][1]))
-    #             j=j+1
-    #     for i in range(len(finger)):
-    #         cv2.circle(frame, (finger[i][0], finger[i][1]), 2, (0, 0, 255), -1)
-        
         
 
 

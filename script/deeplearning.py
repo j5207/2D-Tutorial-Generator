@@ -18,7 +18,7 @@ from math import sqrt
 import matplotlib.pyplot as plt
 from copy import deepcopy
 import pickle
-from utils import CovnetDataset, Net, BATCH_SIZE, side_finder
+from utils import CovnetDataset, Net, BATCH_SIZE, side_finder, test_insdie
 from hand_tracking import hand_tracking
 from shapely.geometry import Polygon
 
@@ -110,6 +110,8 @@ class object_detector():
         #----------------------new coming item id------------------#
         self.new_come_id = None
         self.old_come_id = None
+        self.new_come_side = None
+        self.old_come_side = None
         self.new_coming_lock = True
         self.once_lock = True
         #---------------------set some flag-------------------#
@@ -456,7 +458,7 @@ class object_detector():
             cv2.putText(draw_img,str(out),(x,y),cv2.FONT_HERSHEY_SIMPLEX, 1.0,(0,0,255))
             self.predict.append(((x, y, w, h), out))
         if not is_tracking:
-            self.store_side(frame)
+            ind, color = self.store_side(frame)
             self.get_pair(num_object)
             self.milstone_flag = self.store(is_milestone=True)
             
@@ -467,7 +469,6 @@ class object_detector():
     def store_side(self, frame):
         img = frame.copy()
         point, center = hand_tracking(img).get_result()
-        print (self.boxls)
         if point:
             red_center = side_finder(img, color='red')
             blue_center = side_finder(img, color='blue')
@@ -477,7 +478,13 @@ class object_detector():
                 length_ls.append((self.get_k_dis((point[0], point[1]), (center[0], center[1]), (x, y)), (x, y)))
             x,y = min(length_ls, key=lambda x: x[0])[1]
             cv2.circle(img, (x,y), 10, [255, 255, 0], -1)
-
+            ind = test_insdie((x, y), self.boxls)
+            color = None
+            if (x, y) in red_center:
+                color = 'red'
+            elif (x, y) in blue_center:
+                color = 'blue'
+            return ind, color 
         cv2.imshow("point", img)
             
 
