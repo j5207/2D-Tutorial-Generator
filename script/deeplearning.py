@@ -467,6 +467,7 @@ class object_detector():
     def store_side(self, frame):
         img = frame.copy()
         point, center = hand_tracking(img).get_result()
+        print (self.boxls)
         if point:
             red_center = side_finder(img, color='red')
             blue_center = side_finder(img, color='blue')
