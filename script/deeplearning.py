@@ -27,10 +27,10 @@ LR = 0.0002
 
 #GPU = False
 GPU = torch.cuda.is_available()
-EPOTH = 30
+EPOTH = 100
 
 # MODE could be 'train', 'test',  'all'
-MODE = 'test'
+MODE = 'train'
 
 distant = lambda (x1, y1), (x2, y2) : sqrt((x1 - x2)**2 + (y1 - y2)**2)
 
@@ -56,16 +56,17 @@ class node():
     num_instance = 0
     instance_list = []
     pair_list = []
-    def __init__(self, (id1, id2), outcome):
+    def __init__(self, (id1, id2), (side1, side2),outcome):
         self.pair = (id1, id2)
+        self.sides = (side1, side2)
         self.outcome = outcome
         node.num_instance += 1
         node.instance_list.append(self)
-        node.pair_list.append((self.pair, self.outcome))
+        node.pair_list.append((self.pair, self.sides,self.outcome))
         print(self)
 
     def __str__(self):
-        return "this is the {} node, contains {}".format(node.num_instance, self.pair)
+        return "this is the {} node, contains {}, sides {}".format(node.num_instance, self.pair, self.sides)
         
 
 
@@ -253,7 +254,11 @@ class object_detector():
                     d12 = distant((x1, y1), (x2, y2))
                     d13 = distant((x1, y1), (x3, y3))
                     d23 = distant((x2, y2), (x3, y3))
-                    dis = d13 * d23 / d12
+                    # dis = d13 * d23 / d12
+                    # if dis < 60 and d12 < 140 and d13 < 100 and d23 < 100:
+                    #     temp_i.append(i)
+                    #     temp_j.append(j)
+                    dis = self.get_k_dis((x1, y1), (x2, y2), (x3, y3))
                     if dis < 60 and d12 < 140 and d13 < 100 and d23 < 100:
                         temp_i.append(i)
                         temp_j.append(j)
@@ -289,10 +294,10 @@ class object_detector():
             self.storing = True
             if self.user_input > 10:
                 if self.once:
-                    temp_node = node((self.new_come_id, self.old_come_id), self.user_input)
+                    temp_node = node((self.new_come_id, self.old_come_id), (self.new_come_side, self.old_come_side),self.user_input)
                     self.once = False
                 else:
-                    temp_node = node((self.new_come_id, self.user_input - 1), self.user_input)
+                    temp_node = node((self.new_come_id, self.user_input - 1), (self.new_come_side, self.old_come_side), self.user_input)
                 self.node_sequence.append(temp_node)
             print("start")
         if event == cv2.EVENT_LBUTTONDBLCLK and (self.temp_surface[y, x] == np.array([0, 255, 0])).all() and self.storing:
@@ -361,7 +366,8 @@ class object_detector():
                 self.net = Net().cuda()
             reader_train = self.reader(self.path, "read.txt")
             self.net.load_state_dict(torch.load(f=self.path + 'model'))
-        optimizer = optim.SGD(self.net.parameters(), lr=LR, momentum=0.9)
+        optimizer = optim.SGD(self.net.parameters(), lr=LR, momentum=0.9, nesterov=True)
+        #optimizer = optim.Adam(self.net.parameters(), lr=LR, weight_decay=0.1)
         trainset = CovnetDataset(reader=reader_train, transforms=transforms.Compose([transforms.Resize((200, 100)),
                                                                                             transforms.ToTensor()
                                                                                     ]))
@@ -458,8 +464,9 @@ class object_detector():
             cv2.putText(draw_img,str(out),(x,y),cv2.FONT_HERSHEY_SIMPLEX, 1.0,(0,0,255))
             self.predict.append(((x, y, w, h), out))
         if not is_tracking:
-            ind, color = self.store_side(frame)
-            self.get_pair(num_object)
+            lab, color, ind = self.store_side(frame)
+            if lab is not None:
+                self.get_pair(num_object, lab, color, ind)
             self.milstone_flag = self.store(is_milestone=True)
             
         # self.memory.append(self.predict)
@@ -469,7 +476,7 @@ class object_detector():
     def store_side(self, frame):
         img = frame.copy()
         point, center = hand_tracking(img).get_result()
-        if point:
+        if point and len(self.boxls) > 0:
             red_center = side_finder(img, color='red')
             blue_center = side_finder(img, color='blue')
             tape = red_center + blue_center
@@ -484,35 +491,94 @@ class object_detector():
                 color = 'red'
             elif (x, y) in blue_center:
                 color = 'blue'
-            return ind, color 
+            return self.predict[ind][1], color, ind
+        else:
+            return None, None, None
         cv2.imshow("point", img)
             
 
 
-    def get_pair(self, num_object):
-        if self.once and num_object == 2 and self.once_lock and self.predict[0][1] != self.predict[1][1]:
-            self.memory.append(self.predict[0][1])
-            self.memory1.append(self.predict[1][1])
-            if self.memory.full:
-                self.new_come_id = max(set(self.memory.list), key=self.memory.list.count)
-                                                
-            if self.memory1.full:
-                self.old_come_id = max(set(self.memory1.list), key=self.memory1.list.count)
+    def get_pair(self, num_object, label, color, index):
+        '''
+        pointing from left to right
+        '''
+        if self.once and self.once_lock and num_object == 2:
+            if index == 0:
+                self.memory.append(self.predict[0][1])
+                if self.memory.full:
+                    self.new_come_id = max(set(self.memory.list), key=self.memory.list.count)
+                    # if self.new_come_id == label:
+                    self.new_come_side = color
+                    # else:
+                    #     self.memory.clear()                                
                 
+            if self.memory.full and index == 1:    
+                self.memory1.append(self.predict[-1][1])
+                if self.memory1.full:
+                    self.old_come_id = max(set(self.memory1.list), key=self.memory1.list.count)
+                    # if self.old_come_id == label:
+                    self.old_come_side = color
+                    # else:
+                    #     self.memory1.clear()
+                    
             if self.memory.full and self.memory1.full:
                 self.once_lock = False
                 self.memory.clear()
                 self.memory1.clear()
                 print("new_come_id:{}, old_come_id:{}".format(self.new_come_id, self.old_come_id))
+                print("new_come_side:{}, old_come_side:{}".format(self.new_come_side, self.old_come_side))
         
+        
+        '''
+        pointing from left to right
+        '''
         if not self.once and num_object == 2 and self.new_coming_lock:
-            self.memory.append(self.predict[-1][1])
-            # ind = min(range(len(self.boxls)), key=lambda i:self.boxls[i][2]*self.boxls[i][3])
-            if self.memory.full:
-                self.new_come_id = max(set(self.memory.list), key=self.memory.list.count)
+            if index == 0:
+                self.old_come_side = color
+            elif index == 1:               
+                self.memory.append(self.predict[1][1])
+                if self.memory.full:
+                    self.new_come_id = max(set(self.memory.list), key=self.memory.list.count)                    
+                    self.new_come_side = color
+                    self.memory.clear()
+
+            if self.new_come_side and self.old_come_side:
                 self.new_coming_lock = False
-                self.memory.clear()
-                print("new_come_id:{}, new_coming_lock:{}".format(self.new_come_id, self.new_coming_lock))       
+                print("new_come_id:{}".format(self.new_come_id))
+                print("new_come_side:{}, old_come_side:{}".format(self.new_come_side, self.old_come_side))
+
+
+        # if self.once and num_object == 2 and self.once_lock and self.predict[0][1] != self.predict[1][1]:
+        #     self.memory.append(self.predict[0][1])
+        #     self.memory1.append(self.predict[1][1])
+        #     if self.memory.full:
+        #         self.new_come_id = max(set(self.memory.list), key=self.memory.list.count)
+        #         if self.new_come_id == label:
+        #             self.new_come_side = color                                
+        #     if self.memory1.full:
+        #         self.old_come_id = max(set(self.memory1.list), key=self.memory1.list.count)
+        #         if self.old_come_id == label:
+        #             self.old_come_side = color
+                
+        #     if self.memory.full and self.memory1.full:
+        #         self.once_lock = False
+        #         self.memory.clear()
+        #         self.memory1.clear()
+        #         print("new_come_id:{}, old_come_id:{}".format(self.new_come_id, self.old_come_id))
+        #         print("new_come_side:{}, old_come_side:{}".format(self.new_come_side, self.old_come_side))
+        
+        # if not self.once and num_object == 2 and self.new_coming_lock:
+        #     if label < 10:
+        #         self.memory.append(self.predict[-1][1])
+        #         if self.memory.full:
+        #             self.new_come_id = max(set(self.memory.list), key=self.memory.list.count)                    
+        #             self.new_come_side = color
+        #             self.memory.clear()
+        #     elif label > 10:
+        #         self.old_come_side = color
+        #     if self.new_come_side and self.old_come_side:
+        #         self.new_coming_lock = False
+        #         print(self.new_come_side, self.old_come_side)     
 
 
 
