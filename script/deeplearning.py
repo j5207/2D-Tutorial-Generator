@@ -18,39 +18,25 @@ from math import sqrt
 import matplotlib.pyplot as plt
 from copy import deepcopy
 import pickle
-from utils import CovnetDataset, Net, BATCH_SIZE, side_finder, test_insdie
+from utils import CovnetDataset, Net, BATCH_SIZE, side_finder, test_insdie, cache
 from hand_tracking import hand_tracking
 from shapely.geometry import Polygon
 
 
-LR = 0.0003
-
+LR = 0.0006
+GAMMA = 0.5
+STEP = 10
 #GPU = False
 GPU = torch.cuda.is_available()
-EPOTH = 50
+EPOTH = 100
+MOMENTUM = 0.7
 
 # MODE could be 'train', 'test',  'all'
-MODE = 'train'
+MODE = 'test'
 
 distant = lambda (x1, y1), (x2, y2) : sqrt((x1 - x2)**2 + (y1 - y2)**2)
 
-class cache():
-    def __init__(self, length):
-        self.list = []
-        self.length = length
-        self.full = False
-    
-    def append(self, data):
-        if len(self.list) < self.length:
-            self.list.append(data)
-        else:
-            del self.list[0]
-            self.append(data)
-            self.full = True
 
-    def clear(self):
-        self.list = []
-        self.full = False
 
 class node():
     num_instance = 0
@@ -83,6 +69,7 @@ class object_detector():
 
         self.boxls = None
         self.count = 1
+        self.new_count = 1
         self.path = "/home/intuitivecompting/Desktop/color/Smart-Projector/script/datasets/"
         if MODE == 'all':
             self.file = open(self.path + "read.txt", "w")
@@ -91,6 +78,7 @@ class object_detector():
         self.predict = None
         self.memory = cache(10)
         self.memory1 = cache(10)
+        self.hand_memory = cache(10)
 
         self.node_sequence = []
         #-----------------------create GUI-----------------------#
@@ -320,9 +308,9 @@ class object_detector():
         # else:
         if is_milestone:
             self.file = open(self.path + "read.txt", "a")
-            img_dir = os.path.join(self.path + "image", "milstone" + str(self.user_input)+str(self.count) + ".jpg")
+            img_dir = os.path.join(self.path + "image", "milstone" + str(self.new_count) + ".jpg")
         else:
-            img_dir = os.path.join(self.path + "image", str(self.user_input)+str(self.count) + ".jpg")
+            img_dir = os.path.join(self.path + "image", str(self.new_count) + ".jpg")
         file = self.file
         self.createFolder(self.path + "image")
         if self.quit:
@@ -342,7 +330,8 @@ class object_detector():
                 file.write(img_dir + " " + str(self.user_input) + "\n")
                 if self.count % 100 == 0:
                     print('output imgs ' + str(self.count) + 'img' )
-                self.count += 1 
+                self.count += 1
+                self.new_count += 1 
                 return False
             #-----------------get to the next item-----------    
         else:
@@ -365,10 +354,10 @@ class object_detector():
             else:
                 self.net = Net().cuda()
             reader_train = self.reader(self.path, "read.txt")
-            self.net.load_state_dict(torch.load(f=self.path + 'model'))
-        #optimizer = optim.SGD(self.net.parameters(), lr=LR, momentum=0.9, nesterov=True)
-        optimizer = optim.Adam(self.net.parameters(), lr=LR, weight_decay=0.1)
-        schedule = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
+            #self.net.load_state_dict(torch.load(f=self.path + 'model'))
+        optimizer = optim.SGD(self.net.parameters(), lr=LR, momentum=MOMENTUM, nesterov=True)
+        #optimizer = optim.Adam(self.net.parameters(), lr=LR, weight_decay=0.01)
+        schedule = optim.lr_scheduler.StepLR(optimizer, step_size=STEP, gamma=GAMMA)
         trainset = CovnetDataset(reader=reader_train, transforms=transforms.Compose([transforms.Resize((200, 100)),
                                                                                             transforms.ToTensor()
                                                                                     ]))
@@ -384,6 +373,7 @@ class object_detector():
             t = tqdm.trange(EPOTH, desc='Training')
             temp = 0
             for _ in t:  # loop over the dataset multiple times
+                schedule.step()
                 running_loss = 0.0
                 i = 0
                 for data in trainloader:
@@ -466,7 +456,7 @@ class object_detector():
             self.predict.append(((x, y, w, h), out))
         if not is_tracking:
             lab, color, ind = self.store_side(frame)
-            if lab is not None:
+            if lab:
                 self.get_pair(num_object, lab, color, ind)
             self.milstone_flag = self.store(is_milestone=True)
             
@@ -476,7 +466,7 @@ class object_detector():
     
     def store_side(self, frame):
         img = frame.copy()
-        point, center = hand_tracking(img).get_result()
+        point, center = hand_tracking(img, self.hand_memory).get_result()
         if point and len(self.boxls) > 0:
             red_center = side_finder(img, color='red')
             blue_center = side_finder(img, color='blue')
@@ -487,12 +477,16 @@ class object_detector():
             x,y = min(length_ls, key=lambda x: x[0])[1]
             cv2.circle(img, (x,y), 10, [255, 255, 0], -1)
             ind = test_insdie((x, y), self.boxls)
-            color = None
-            if (x, y) in red_center:
-                color = 'red'
-            elif (x, y) in blue_center:
-                color = 'blue'
-            return self.predict[ind][1], color, ind
+            # print(ind, self.predict)
+            if ind is not None:
+                color = None
+                if (x, y) in red_center:
+                    color = 'red'
+                elif (x, y) in blue_center:
+                    color = 'blue'
+                return self.predict[ind][1], color, ind
+            else:
+                return None, None, None
         else:
             return None, None, None
         cv2.imshow("point", img)

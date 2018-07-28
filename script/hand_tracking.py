@@ -1,10 +1,13 @@
 import cv2
 import numpy as np
 import heapq
-
+from utils import cache
 
 class hand_tracking():
-    def __init__(self, image):
+    def __init__(self, image, memory):
+        self.memory = memory
+        self.flag = False
+
         frame = image.copy()
         self.radius_thresh = 0.05
 
@@ -63,7 +66,18 @@ class hand_tracking():
         cv2.imshow('hand_tracking',frame) 
     def get_result(self):
         # return self.hand_cnt
+        self.filter()
+
         return self.only_point, self.center
+    
+    def filter(self):
+        if self.memory.full:
+            if 0 in self.memory.list:
+                self.only_point = None
+            self.memory.clear()
+        else:
+            self.only_point = None
+        # self.memory.append()
 
     def mark_hand_center(self, frame_in,cont):    
         max_d=0
@@ -107,13 +121,19 @@ class hand_tracking():
                 #print largest_two[0] , largest_two[1]
                 cv2.putText(frame_in,"pointing",(int(0.38*frame_in.shape[1]),int(0.12*frame_in.shape[0])),cv2.FONT_HERSHEY_DUPLEX,1,(0,255,255),1,8)
                 self.only_point = finger[dis_center_ls.index(largest_two[0])]
+
+
         elif len(dis_center_ls) == 1:
             if dis_center_ls[0] > 100:
                 #print "only, {}".format(dis_center_ls[0])
                 cv2.putText(frame_in,"pointing",(int(0.38*frame_in.shape[1]),int(0.12*frame_in.shape[0])),cv2.FONT_HERSHEY_DUPLEX,1,(0,255,255),1,8)
                 self.only_point = finger[0]
-
-            
+        
+        if self.only_point is not None:
+            self.memory.append(1)
+        else:
+            self.memory.append(0)
+       
 
         for k in range(len(finger)):
             cv2.circle(frame_in,finger[k],10,255,2)
@@ -132,12 +152,12 @@ class hand_tracking():
 
 
 
-if __name__ == '__main__':
-    cap = cv2.VideoCapture(0)
-    while True:
-        hand_tracking(cap)
-        k = cv2.waitKey(1) & 0xFF # large wait time to remove freezing
-        if k == 113 or k == 27:
-            break
-    cap.release()
-    cv2.destroyAllWindows()
+# if __name__ == '__main__':
+#     cap = cv2.VideoCapture(0)
+#     while True:
+#         hand_tracking(cap)
+#         k = cv2.waitKey(1) & 0xFF # large wait time to remove freezing
+#         if k == 113 or k == 27:
+#             break
+#     cap.release()
+#     cv2.destroyAllWindows()

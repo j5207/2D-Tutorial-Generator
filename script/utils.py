@@ -124,6 +124,24 @@ def test_insdie(point, boundingbox_list):
         if cx > x and cx < x+w and cy > y and cy < y+h:
             return i
 
+class cache():
+    def __init__(self, length):
+        self.list = []
+        self.length = length
+        self.full = False
+    
+    def append(self, data):
+        if len(self.list) < self.length:
+            self.list.append(data)
+        else:
+            del self.list[0]
+            self.append(data)
+            self.full = True
+
+    def clear(self):
+        self.list = []
+        self.full = False
+
 # from __future__ import division
 # import torch.nn as nn
 # import torch.nn.functional as F
