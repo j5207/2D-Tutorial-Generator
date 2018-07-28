@@ -23,11 +23,11 @@ from hand_tracking import hand_tracking
 from shapely.geometry import Polygon
 
 
-LR = 0.0002
+LR = 0.0003
 
 #GPU = False
 GPU = torch.cuda.is_available()
-EPOTH = 100
+EPOTH = 50
 
 # MODE could be 'train', 'test',  'all'
 MODE = 'train'
@@ -366,8 +366,9 @@ class object_detector():
                 self.net = Net().cuda()
             reader_train = self.reader(self.path, "read.txt")
             self.net.load_state_dict(torch.load(f=self.path + 'model'))
-        optimizer = optim.SGD(self.net.parameters(), lr=LR, momentum=0.9, nesterov=True)
-        #optimizer = optim.Adam(self.net.parameters(), lr=LR, weight_decay=0.1)
+        #optimizer = optim.SGD(self.net.parameters(), lr=LR, momentum=0.9, nesterov=True)
+        optimizer = optim.Adam(self.net.parameters(), lr=LR, weight_decay=0.1)
+        schedule = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
         trainset = CovnetDataset(reader=reader_train, transforms=transforms.Compose([transforms.Resize((200, 100)),
                                                                                             transforms.ToTensor()
                                                                                     ]))
