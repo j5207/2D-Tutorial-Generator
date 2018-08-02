@@ -24,7 +24,7 @@ from shapely.geometry import Polygon
 
 
 LR = 0.0006
-GAMMA = 0.5
+GAMMA = 0.4
 STEP = 10
 #GPU = False
 GPU = torch.cuda.is_available()
@@ -32,7 +32,7 @@ EPOTH = 100
 MOMENTUM = 0.7
 
 # MODE could be 'train', 'test',  'all'
-MODE = 'train'
+MODE = 'all'
 
 distant = lambda (x1, y1), (x2, y2) : sqrt((x1 - x2)**2 + (y1 - y2)**2)
 
@@ -116,7 +116,7 @@ class object_detector():
             else:
                 self.net = Net().cuda()
             self.net.load_state_dict(torch.load(f=self.path + 'model'))
-            self.user_input = 10
+            self.user_input = 9
 
 
     def update(self, save=True, train=False):
@@ -145,6 +145,7 @@ class object_detector():
             thresh = cv2.subtract(thresh, hand_mask)
             thresh = cv2.subtract(thresh, skin_mask)
             thresh[477:, 50:610] = 0
+            thresh = cv2.dilate(thresh, kernel = np.ones((7,7),np.uint8))
             cv2.imshow('afg', thresh)
             draw_img1 = warp.copy()
             draw_img2 = warp.copy()
@@ -361,9 +362,9 @@ class object_detector():
         trainset = CovnetDataset(reader=reader_train, transforms=transforms.Compose([transforms.Resize((200, 100)),
                                                                                             transforms.ToTensor()
                                                                                     ]))
-        # trainset = CovnetDataset(reader=reader_train, transforms=transforms.Compose([transforms.Pad(30),
-        #                                                                                      transforms.ToTensor()
-        #                                                                              ]))
+        #trainset = CovnetDataset(reader=reader_train, transforms=transforms.Compose([transforms.Pad(30),
+         #                                                                                     transforms.ToTensor()
+          #                                                                            ]))
         trainloader = DataLoader(dataset=trainset, batch_size=BATCH_SIZE, shuffle=True, num_workers=2)
 #-----------------------------------training----------------------------------------------------------------        
         if True:
@@ -431,8 +432,8 @@ class object_detector():
         frame = self.train_img
         preprocess = transforms.Compose([transforms.Resize((200, 100)),
                                                     transforms.ToTensor()])
-        # preprocess = transforms.Compose([transforms.Pad(30),
-        #                                              transforms.ToTensor()])
+        #preprocess = transforms.Compose([transforms.Pad(30),
+         #                                             transforms.ToTensor()])
         for i in range(num_object):
             x,y,w,h = self.boxls[i]
             temp = frame[y:y+h, x:x+w, :]
