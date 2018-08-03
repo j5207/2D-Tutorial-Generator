@@ -28,7 +28,7 @@ GAMMA = 0.4
 STEP = 10
 #GPU = False
 GPU = torch.cuda.is_available()
-EPOTH = 100
+EPOTH = 50
 MOMENTUM = 0.7
 
 # MODE could be 'train', 'test',  'all'
@@ -76,9 +76,9 @@ class object_detector():
             self.milestone_file = open(self.path + "mileston_read.txt", "w")
         self.user_input = 0
         self.predict = None
-        self.memory = cache(10)
-        self.memory1 = cache(10)
-        self.hand_memory = cache(8)
+        self.memory = cache(20)
+        self.memory1 = cache(20)
+        self.hand_memory = cache(10)
 
         self.node_sequence = []
         #-----------------------create GUI-----------------------#
@@ -116,7 +116,7 @@ class object_detector():
             else:
                 self.net = Net().cuda()
             self.net.load_state_dict(torch.load(f=self.path + 'model'))
-            self.user_input = 9
+            self.user_input = 5
 
 
     def update(self, save=True, train=False):
@@ -145,7 +145,7 @@ class object_detector():
             thresh = cv2.subtract(thresh, hand_mask)
             thresh = cv2.subtract(thresh, skin_mask)
             thresh[477:, 50:610] = 0
-            thresh = cv2.dilate(thresh, kernel = np.ones((7,7),np.uint8))
+            #thresh = cv2.dilate(thresh, kernel = np.ones((11,11),np.uint8))
             cv2.imshow('afg', thresh)
             draw_img1 = warp.copy()
             draw_img2 = warp.copy()
@@ -281,7 +281,7 @@ class object_detector():
             self.count = 1
             self.user_input += 1
             self.storing = True
-            if self.user_input > 10:
+            if self.user_input > 5:
                 if self.once:
                     temp_node = node((self.new_come_id, self.old_come_id), (self.new_come_side, self.old_come_side),self.user_input)
                     self.once = False
@@ -292,6 +292,11 @@ class object_detector():
         if event == cv2.EVENT_LBUTTONDBLCLK and (self.temp_surface[y, x] == np.array([0, 255, 0])).all() and self.storing:
             self.storing = False
             self.new_coming_lock = True
+            self.new_come_id = None
+            self.old_come_id = None
+            self.new_come_side = None
+            self.old_come_side = None
+
             print("stop")
         if event == cv2.EVENT_LBUTTONDBLCLK and (self.temp_surface[y, x] == np.array([0, 0, 255])).all():
             self.storing = None
@@ -342,6 +347,8 @@ class object_detector():
     
         
     def train(self, is_incremental=False):
+        if is_incremental:
+            pickle.dump(node.pair_list ,open("node.p", "wb"))
         start_time = time.time()
         if not is_incremental:
             reader_train = self.reader(self.path, "read.txt")
@@ -411,17 +418,16 @@ class object_detector():
             self.quit = None
             
             if not is_incremental:
-                self.user_input = 10
+                self.user_input = 5
                 torch.save(self.net.state_dict(), f=self.path + 'model')
             else:
                 torch.save(self.net.state_dict(), f=self.path + 'milestone_model')
-                pickle.dump(node.pair_list ,open("node.p", "wb"))
-                try:
-                    node_file = open(self.path + "node.txt", "w")
-                    for pair in node.pair_list: 
-                        node_file.write(str(pair[0][0]) + "" + str(pair[0][1]) + "" +str(pair[1][0]) + "" + str(pair[1][1]) + "\n")
-                except:
-                    print("fail to save")
+                # try:
+                #     node_file = open(self.path + "node.txt", "w")
+                #     for pair in node.pair_list: 
+                #         node_file.write(str(pair[0][0]) + "" + str(pair[0][1]) + "" +str(pair[1][0]) + "" + str(pair[1][1]) + "\n")
+                # except:
+                #     print("fail to save")
             return True
 #---------------------------------testing-----------------------------------------------
         
@@ -456,9 +462,9 @@ class object_detector():
             cv2.putText(draw_img,str(out),(x,y),cv2.FONT_HERSHEY_SIMPLEX, 1.0,(0,0,255))
             self.predict.append(((x, y, w, h), out))
         if not is_tracking:
-            lab, color, ind = self.store_side(frame)
+            lab, color, ind, coord = self.store_side(frame)
             if lab:
-                self.get_pair(num_object, lab, color, ind)
+                self.get_pair(frame.copy(), num_object, lab, color, ind, coord)
             self.milstone_flag = self.store(is_milestone=True)
             
         # self.memory.append(self.predict)
@@ -505,7 +511,7 @@ class object_detector():
 
             
             
-            
+            # cv2.imshow("point", img)
             # print(ind, self.predict)
             if ind is not None:
                 color = None
@@ -513,26 +519,31 @@ class object_detector():
                     color = 'red'
                 elif (x, y) in blue_center:
                     color = 'blue'
-                return self.predict[ind][1], color, ind
+                return self.predict[ind][1], color, ind, (x, y)
             else:
-                return None, None, None
+                return None, None, None, None
         else:
-            return None, None, None
-        # cv2.imshow("point", img)
+            return None, None, None, None
+        # 
             
 
 
-    def get_pair(self, num_object, label, color, index):
+    def get_pair(self,image, num_object, label, color, index, coord):
         '''
         pointing from left to right
         '''
         if self.once and self.once_lock and num_object == 2:
             if index == 0:
                 self.memory.append(self.predict[0][1])
-                if self.memory.full:
+                if self.memory.full and self.new_come_id is None:
                     self.new_come_id = max(set(self.memory.list), key=self.memory.list.count)
                     # if self.new_come_id == label:
-                    self.new_come_side = color
+                    self.new_come_side = self.draw_point(image, coord, index)
+                    print("get one")
+                    # cv2.circle(image, coord, 5, (125, 125), 1)
+                    # x,y,w,h = self.boxls[index]
+                    # sub_img = image[y:y+h, x:x+w, :]
+                    # cv2.imwrite('saved' + str(self.predict[0][1]) + '.jpg', sub_img)
                     # else:
                     #     self.memory.clear()                                
                 
@@ -541,7 +552,11 @@ class object_detector():
                 if self.memory1.full:
                     self.old_come_id = max(set(self.memory1.list), key=self.memory1.list.count)
                     # if self.old_come_id == label:
-                    self.old_come_side = color
+                    self.old_come_side = self.draw_point(image, coord, index)
+                    # cv2.circle(image, coord, 5, (125, 125), 1)
+                    # x,y,w,h = self.boxls[index]
+                    # sub_img = image[y:y+h, x:x+w, :]
+                    # cv2.imwrite('saved' + str(self.predict[-1][1]) + '.jpg', sub_img)
                     # else:
                     #     self.memory1.clear()
                     
@@ -558,13 +573,24 @@ class object_detector():
         '''
         if not self.once and num_object == 2 and self.new_coming_lock:
             if index == 0:
-                self.old_come_side = color
-            elif index == 1:               
-                self.memory.append(self.predict[1][1])
+                self.old_come_side = self.draw_point(image, coord, index, is_milestone=True)
+                
+                # cv2.circle(image, coord, 5, (125, 125), 1)
+                # x,y,w,h = self.boxls[index]
+                # sub_img = image[y:y+h, x:x+w, :]
+                # cv2.imwrite('saved' + str(self.user_input + 1) + '.jpg', sub_img)
+            elif index == 1 and self.new_come_id is None:               
+                self.memory.append(self.predict[-1][1])
                 if self.memory.full:
                     self.new_come_id = max(set(self.memory.list), key=self.memory.list.count)                    
-                    self.new_come_side = color
+                    self.new_come_side = self.draw_point(image, coord, index)
                     self.memory.clear()
+
+                    
+                    # cv2.circle(image, coord, 5, (125, 125), 1)
+                    # x,y,w,h = self.boxls[index]
+                    # sub_img = image[y:y+h, x:x+w, :]
+                    # cv2.imwrite('saved' + str(self.predict[1][1]) + '.jpg', sub_img)
 
             if self.new_come_side and self.old_come_side:
                 self.new_coming_lock = False
@@ -572,40 +598,18 @@ class object_detector():
                 print("new_come_side:{}, old_come_side:{}".format(self.new_come_side, self.old_come_side))
 
 
-        # if self.once and num_object == 2 and self.once_lock and self.predict[0][1] != self.predict[1][1]:
-        #     self.memory.append(self.predict[0][1])
-        #     self.memory1.append(self.predict[1][1])
-        #     if self.memory.full:
-        #         self.new_come_id = max(set(self.memory.list), key=self.memory.list.count)
-        #         if self.new_come_id == label:
-        #             self.new_come_side = color                                
-        #     if self.memory1.full:
-        #         self.old_come_id = max(set(self.memory1.list), key=self.memory1.list.count)
-        #         if self.old_come_id == label:
-        #             self.old_come_side = color
-                
-        #     if self.memory.full and self.memory1.full:
-        #         self.once_lock = False
-        #         self.memory.clear()
-        #         self.memory1.clear()
-        #         print("new_come_id:{}, old_come_id:{}".format(self.new_come_id, self.old_come_id))
-        #         print("new_come_side:{}, old_come_side:{}".format(self.new_come_side, self.old_come_side))
-        
-        # if not self.once and num_object == 2 and self.new_coming_lock:
-        #     if label < 10:
-        #         self.memory.append(self.predict[-1][1])
-        #         if self.memory.full:
-        #             self.new_come_id = max(set(self.memory.list), key=self.memory.list.count)                    
-        #             self.new_come_side = color
-        #             self.memory.clear()
-        #     elif label > 10:
-        #         self.old_come_side = color
-        #     if self.new_come_side and self.old_come_side:
-        #         self.new_coming_lock = False
-        #         print(self.new_come_side, self.old_come_side)     
 
-
-
+    def draw_point(self, image, coord, index, is_milestone=False):
+        #cv2.circle(image, coord, 5, (125, 125), 1)
+        x,y,w,h = self.boxls[index]
+        sub_img = image[y:y+h, x:x+w, :]
+        cv2.circle(sub_img, (coord[0] - x, coord[1] - y) , 5, (125, 125), -1)
+        if not is_milestone:
+            cv2.imwrite('saved' + str(self.predict[index][1]) + '.jpg', sub_img)
+            return (coord[0] - x, coord[1] - y)
+        else:
+            cv2.imwrite('saved' + str(self.user_input+1) + '.jpg', sub_img)
+            return (coord[0] - x, coord[1] - y)
 
 
     def warp(self, img):

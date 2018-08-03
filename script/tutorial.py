@@ -4,6 +4,8 @@ import numpy as np
 import sys
 import math
 from constant import *
+import pickle
+import glob
 
 
 def cartoon(input_image, a=14, N=3, p=43):
@@ -126,19 +128,36 @@ def draw_arrow(img, pt1, pt2):
     cv2.arrowedLine(img, pt2, pt1, (0, 0, 255), 5)
     return draw_arrow
 
+class comic_book():
+    num_instance = 0
+    canvas = None
+    def __init__(self, image_list, point=None):
+        if comic_book.num_instance == 0:
+            canvas, center_list = concat_imgs(image_list)
+            canvas = add_background(canvas)
+            cv2.putText(canvas,  "Step " + str(comic_book.num_instance), (50,50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,255), 1, cv2.LINE_AA)
+            comic_book.canvas = canvas
+        else:
+            canvas, center_list = concat_imgs(image_list)
+            canvas = add_background(canvas)
+            cv2.putText(canvas,  "Step " + str(comic_book.num_instance), (50,50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,255), 1, cv2.LINE_AA)
+            canvas = padding(canvas, (canvas.shape[0], comic_book.canvas.shape[1]), (0, 0))[0]
+            canvas = np.concatenate((comic_book.canvas, canvas), axis=0)
+            comic_book.canvas = canvas
+        comic_book.num_instance += 1
+
 
 
 
 def main():
-    file = open("datasets/node.txt", "r")
-    for lines in file:
-        id1, id2, side1, side2 = int(lines[1]), int(lines[4]), str(lines[8:11]), str(lines[15:19])
-        print(id1, id2, side1, side2)
-    canvas, center_list = concat_imgs(['1.jpg', '2.jpg', '5.jpg'])
-    draw_arrow(canvas, center_list[0], center_list[1])
-    canvas = add_background(canvas)
-    cv2.imshow('ddd', canvas)
-    cv2.waitKey(0)
+    data = pickle.load( open( "node.p", "rb" ))
+    print(data)
+    print(str(glob.glob('test_imgs/folder/*.jpg')[0])[0])
+    # canvas, center_list = concat_imgs(['1.jpg', '2.jpg', '5.jpg'])
+    # draw_arrow(canvas, center_list[0], center_list[1])
+    # canvas = add_background(canvas)
+    # cv2.imshow('ddd', canvas)
+    # cv2.waitKey(0)
 
 if __name__ == '__main__':
     main()
