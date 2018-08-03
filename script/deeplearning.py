@@ -1,4 +1,4 @@
-from __future__ import print_function
+from __future__ import division
 import numpy as np
 import cv2
 import time
@@ -21,7 +21,7 @@ import pickle
 from utils import CovnetDataset, Net, BATCH_SIZE, side_finder, test_insdie, cache
 from hand_tracking import hand_tracking
 from shapely.geometry import Polygon
-
+from constant import *
 
 LR = 0.0006
 GAMMA = 0.4
@@ -131,12 +131,12 @@ class object_detector():
 
             #-------------segment the object----------------#
             hsv = cv2.cvtColor(warp,cv2.COLOR_BGR2HSV)
-            green_mask = cv2.inRange(hsv, np.array([63,101,61]), np.array([86,255,255]))
+            green_mask = cv2.inRange(hsv, Green_low, Green_high)
             # green_mask = cv2.inRange(hsv, np.array([45,90,29]), np.array([85,255,255]))
-            hand_mask = cv2.inRange(hsv, np.array([122,37,0]), np.array([143,255,255]))
+            hand_mask = cv2.inRange(hsv, Hand_low, Hand_high)
             hand_mask = cv2.dilate(hand_mask, kernel = np.ones((7,7),np.uint8))
 
-            skin_mask = cv2.inRange(hsv, np.array([0,36,0]), np.array([17,255,255]))
+            skin_mask = cv2.inRange(hsv, Skin_low, Skin_high)
             skin_mask = cv2.dilate(skin_mask, kernel = np.ones((7,7),np.uint8))
 
             
@@ -478,6 +478,34 @@ class object_detector():
             x,y = min(length_ls, key=lambda x: x[0])[1]
             cv2.circle(img, (x,y), 10, [255, 255, 0], -1)
             ind = test_insdie((x, y), self.boxls)
+
+            # x,y,w,h = self.boxls[ind]
+            # line_canvas = np.zeros((h, w))
+            # cx, cy = center
+            # x1, y1 = point
+            # k = (y1-cy)/float(x1-cx)
+            # cv2.line(line_canvas, point, (x1-50, y1-50*k), (255,0,0), 5)
+            
+            # frame_copy = frame.copy()
+            # sub_img = frame_copy[y:y+h, x:x+w, :]
+            # hsv = cv2.cvtColor(img,cv2.COLOR_BGR2HSV)
+            # object_mask = cv2.subtract(cv2.inRange(hsv, Green_low, Green_high),cv2.inRange(hsv, Hand_low, Hand_high))
+            # object_mask = 255 - object_mask
+            # (_,object_contours, object_hierarchy)=cv2.findContours(object_mask,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+            # max_area = 0
+            # cnt = None
+            # for i , contour in enumerate(object_contours):
+            #     area = cv2.contourArea(contour)
+            #     if object_hierarchy[0, i, 3] == -1 and area > max_area:	
+            #         max_area = area
+            #         cnt = contour	
+            # cnt_canvas = np.zeros((h, w))
+
+
+
+            
+            
+            
             # print(ind, self.predict)
             if ind is not None:
                 color = None
@@ -490,7 +518,7 @@ class object_detector():
                 return None, None, None
         else:
             return None, None, None
-        cv2.imshow("point", img)
+        # cv2.imshow("point", img)
             
 
 

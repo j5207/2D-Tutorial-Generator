@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 import heapq
 from utils import cache
+from constant import Hand_low, Hand_high
 
 class hand_tracking():
     def __init__(self, image, memory):
@@ -16,7 +17,7 @@ class hand_tracking():
         blur = cv2.blur(frame,(3,3))
         hsv = cv2.cvtColor(blur,cv2.COLOR_BGR2HSV)
         kernal = np.ones((7 ,7), "uint8")
-        mask = cv2.inRange(hsv,np.array([128,38,0]),np.array([139,255,255]))
+        mask = cv2.inRange(hsv, Hand_low, Hand_high)
         mask = cv2.dilate(mask, kernal)
         mask = cv2.GaussianBlur(mask,(1,1),-1)  
         # kernel_square = np.ones((11,11),np.uint8)

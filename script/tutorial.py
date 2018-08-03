@@ -3,17 +3,22 @@ import cv2
 import numpy as np
 import sys
 import math
-
+from constant import *
 
 
 def cartoon(input_image, a=14, N=3, p=43):
     input_image = cv2.imread(input_image)
     hsv = cv2.cvtColor(input_image,cv2.COLOR_BGR2HSV)
-    green_mask = cv2.inRange(hsv, np.array([63,101,61]), np.array([86,255,255]))
+    green_mask = cv2.inRange(hsv,Green_low, Green_high)
     green_mask = cv2.dilate(green_mask, kernel = np.ones((3,3),np.uint8))
+
+    hand_mask = cv2.inRange(hsv, Hand_low, Hand_high)
+    hand_mask = cv2.dilate(hand_mask, kernel = np.ones((7,7),np.uint8))
     #green_mask = 255 - green_mask
     res = cv2.bitwise_and(input_image, input_image, mask=green_mask)
+    res1 = cv2.bitwise_and(input_image, input_image, mask=hand_mask)
     input_image = cv2.subtract(input_image, res)
+    input_image = cv2.subtract(input_image, res1)
     for _ in range(0,N):
         bilateral_filtimg = cv2.bilateralFilter(input_image,9,75,75)
 
@@ -99,12 +104,13 @@ def add_background(image):
 
 def get_center(img, visualization=False):
     hsv = cv2.cvtColor(img,cv2.COLOR_BGR2HSV)
-    object_mask = 255 - cv2.inRange(hsv, np.array([63,101,61]), np.array([86,255,255]))
+    object_mask = 255 - cv2.inRange(hsv, Green_low, Green_high)
     (_,object_contours, object_hierarchy)=cv2.findContours(object_mask,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
     max_area = 0
     for i , contour in enumerate(object_contours):
         area = cv2.contourArea(contour)
-        if object_hierarchy[0, i, 3] == -1 and area > max_area:					
+        if object_hierarchy[0, i, 3] == -1 and area > max_area:	
+            max_area = area				
             M = cv2.moments(contour)
             cx = int(M['m10']/M['m00'])
             cy = int(M['m01']/M['m00'])
