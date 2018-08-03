@@ -32,7 +32,7 @@ EPOTH = 100
 MOMENTUM = 0.7
 
 # MODE could be 'train', 'test',  'all'
-MODE = 'all'
+MODE = 'test'
 
 distant = lambda (x1, y1), (x2, y2) : sqrt((x1 - x2)**2 + (y1 - y2)**2)
 
@@ -78,7 +78,7 @@ class object_detector():
         self.predict = None
         self.memory = cache(10)
         self.memory1 = cache(10)
-        self.hand_memory = cache(10)
+        self.hand_memory = cache(8)
 
         self.node_sequence = []
         #-----------------------create GUI-----------------------#
@@ -133,7 +133,7 @@ class object_detector():
             hsv = cv2.cvtColor(warp,cv2.COLOR_BGR2HSV)
             green_mask = cv2.inRange(hsv, np.array([63,101,61]), np.array([86,255,255]))
             # green_mask = cv2.inRange(hsv, np.array([45,90,29]), np.array([85,255,255]))
-            hand_mask = cv2.inRange(hsv, np.array([118,32,0]), np.array([153,255,255]))
+            hand_mask = cv2.inRange(hsv, np.array([122,37,0]), np.array([143,255,255]))
             hand_mask = cv2.dilate(hand_mask, kernel = np.ones((7,7),np.uint8))
 
             skin_mask = cv2.inRange(hsv, np.array([0,36,0]), np.array([17,255,255]))
@@ -419,7 +419,7 @@ class object_detector():
                 try:
                     node_file = open(self.path + "node.txt", "w")
                     for pair in node.pair_list: 
-                        node_file.write(str(pair[0]) + "" + str(pair[1]) + "\n")
+                        node_file.write(str(pair[0][0]) + "" + str(pair[0][1]) + "" +str(pair[1][0]) + "" + str(pair[1][1]) + "\n")
                 except:
                     print("fail to save")
             return True

@@ -54,30 +54,41 @@ def cartoon(input_image, a=14, N=3, p=43):
     cv2.imshow('Toonified Image',finalimg)       
     cv2.waitKey(0)  
 
-def padding(img, height, width):
+def padding(img, size, point):
+    height, width = size
+    cx, cy = point
     if img.shape[0] < height or img.shape[1] < width:
-        offset = (((height-img.shape[0])//2, height-img.shape[0]-
-        (height-img.shape[0])//2), ((width-img.shape[1])//2, width-img.shape[1]-
-        (width-img.shape[1])//2), (0, 0))
+        y_minus = (height-img.shape[0])//2
+        y_add = height-img.shape[0] - (height-img.shape[0])//2
+        x_minus = (width-img.shape[1])//2
+        x_add = width-img.shape[1] - (width-img.shape[1])//2
+        offset = ((y_minus, y_add), (x_minus, x_add), (0, 0))
         resize = np.pad(img, offset, 'constant')
-        resize = add_background(resize)
+        # resize = add_background(resize)
         if resize.shape == (height, width):
             raise Exception('sorry i am fool')
-        return resize
+        return resize, (cx+x_minus, cy+y_minus)
     else:
-        return img
+        return img, (cx, cy)
 
 
 
 def concat_imgs(images):
     image_list = list(map(cartoon, images))
     height, width = 300, 200
+    center_list = []
     for i, image in enumerate(image_list):
         if i == 0:
-            img1 = image
+            img1 = padding(image, (height, width), (0, 0))[0]
+            center_list.append(get_center(img1))
         else:
-            img1 = np.concatenate((padding(img1, *(height, width)), padding(image, *(height, width))), axis=1)
-    return img1
+            img1 = padding(img1, (height, width), (0, 0))[0]
+            image, (x, y) = padding(image, (height, width), get_center(image))
+            center_list.append((x+img1.shape[1], y))
+            img1 = np.concatenate((img1, image), axis=1)
+    for point in center_list:
+        cv2.circle(img1, point, 5, (255, 0, 0), -1)
+    return img1, center_list
 
 
 def add_background(image):
@@ -86,6 +97,30 @@ def add_background(image):
     image[image == 0] = background[image == 0]
     return image
 
+def get_center(img, visualization=False):
+    hsv = cv2.cvtColor(img,cv2.COLOR_BGR2HSV)
+    object_mask = 255 - cv2.inRange(hsv, np.array([63,101,61]), np.array([86,255,255]))
+    (_,object_contours, object_hierarchy)=cv2.findContours(object_mask,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+    max_area = 0
+    for i , contour in enumerate(object_contours):
+        area = cv2.contourArea(contour)
+        if object_hierarchy[0, i, 3] == -1 and area > max_area:					
+            M = cv2.moments(contour)
+            cx = int(M['m10']/M['m00'])
+            cy = int(M['m01']/M['m00'])
+    if visualization:
+        cv2.circle(img, (cx, cy), 5, (255, 0, 0), -1)
+        cv2.imshow('haha', img)
+    return (cx, cy)
+
+def draw_arrow(img, pt1, pt2):
+    pt1 = (pt1[0]+20, pt1[1])
+    pt2 = (pt2[0]-20, pt2[1])
+    cv2.arrowedLine(img, pt1, pt2, (0, 0, 255), 5)
+    cv2.arrowedLine(img, pt2, pt1, (0, 0, 255), 5)
+    return draw_arrow
+
+
 
 
 def main():
@@ -93,8 +128,9 @@ def main():
     for lines in file:
         id1, id2, side1, side2 = int(lines[1]), int(lines[4]), str(lines[8:11]), str(lines[15:19])
         print(id1, id2, side1, side2)
-    canvas = concat_imgs(['1.jpg', '2.jpg', '5.jpg'])
-    canvas[canvas == 0] = 255
+    canvas, center_list = concat_imgs(['1.jpg', '2.jpg', '5.jpg'])
+    draw_arrow(canvas, center_list[0], center_list[1])
+    canvas = add_background(canvas)
     cv2.imshow('ddd', canvas)
     cv2.waitKey(0)
 
