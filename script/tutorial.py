@@ -9,7 +9,7 @@ import glob
 
 
 def cartoon(input_image, a=14, N=3, p=43):
-    input_image = cv2.imread(input_image)
+    #input_image = cv2.imread(input_image)
     hsv = cv2.cvtColor(input_image,cv2.COLOR_BGR2HSV)
     green_mask = cv2.inRange(hsv,Green_low, Green_high)
     green_mask = cv2.dilate(green_mask, kernel = np.ones((3,3),np.uint8))
@@ -80,26 +80,39 @@ def padding(img, size, point):
 
 
 
-def concat_imgs(images):
-    image_list = list(map(cartoon, images))
-    height, width = 300, 200
-    center_list = []
-    for i, image in enumerate(image_list):
-        if i == 0:
-            img1 = padding(image, (height, width), (0, 0))[0]
-            center_list.append(get_center(img1))
-        else:
-            img1 = padding(img1, (height, width), (0, 0))[0]
-            image, (x, y) = padding(image, (height, width), get_center(image))
-            center_list.append((x+img1.shape[1], y))
-            img1 = np.concatenate((img1, image), axis=1)
-    for point in center_list:
-        cv2.circle(img1, point, 5, (255, 0, 0), -1)
-    return img1, center_list
+def concat_imgs(images, point_ls, visualization=False):
+    if point_ls is not None:
+        image_list = list(map(cartoon, images))
+        height, width = 350, 350
+        center_list = []
+        for i, image in enumerate(image_list):
+            if i == 0:
+                img1, (x,y) = padding(image, (height, width), point_ls[i])
+                center_list.append((x, y))
+            else:
+                img1 = padding(img1, (height, width), (0, 0))[0]
+                image, (x, y) = padding(image, (height, width), point_ls[i])
+                center_list.append((x+img1.shape[1], y))
+                img1 = np.concatenate((img1, image), axis=1)
+        if visualization:
+            for point in center_list:
+                cv2.circle(img1, point, 5, (255, 0, 0), -1)
+        return img1, center_list
+    else:
+        image_list = list(map(cartoon, images))
+        height, width = 350, 350
+        for i, image in enumerate(image_list):
+            if i == 0:
+                img1 = padding(image, (height, width), (0, 0))[0]
+            else:
+                img1 = padding(img1, (height, width), (0, 0))[0]
+                image = padding(image, (height, width), (0,0))[0]
+                img1 = np.concatenate((img1, image), axis=1)
+        return img1, None
 
 
 def add_background(image):
-    background = cv2.imread('background.jpg')
+    background = cv2.imread('test_imgs/background.jpg')
     background = background[:image.shape[0], :image.shape[1]]
     image[image == 0] = background[image == 0]
     return image
@@ -122,42 +135,63 @@ def get_center(img, visualization=False):
     return (cx, cy)
 
 def draw_arrow(img, pt1, pt2):
+    alpha = 0.5
+    pink = (255, 192, 203)
+    output = img.copy()
+    overlay = img.copy()
     pt1 = (pt1[0]+20, pt1[1])
     pt2 = (pt2[0]-20, pt2[1])
-    cv2.arrowedLine(img, pt1, pt2, (0, 0, 255), 5)
-    cv2.arrowedLine(img, pt2, pt1, (0, 0, 255), 5)
-    return draw_arrow
+    cv2.arrowedLine(overlay, pt1, pt2, pink, 5)
+    cv2.arrowedLine(overlay, pt2, pt1, pink, 5)
+    cv2.addWeighted(overlay, alpha, img, 1-alpha, 0, img)
+    return img
 
 class comic_book():
     num_instance = 0
     canvas = None
     def __init__(self, image_list, point=None):
         if comic_book.num_instance == 0:
-            canvas, center_list = concat_imgs(image_list)
+            canvas= concat_imgs(image_list, point)[0]
+            print(canvas.shape)
             canvas = add_background(canvas)
             cv2.putText(canvas,  "Step " + str(comic_book.num_instance), (50,50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,255), 1, cv2.LINE_AA)
             comic_book.canvas = canvas
         else:
-            canvas, center_list = concat_imgs(image_list)
+            canvas, center_list = concat_imgs(image_list, point)
+            if point is not None:
+                #for cx, cy in center_list:
+                    #cv2.circle(canvas, (cx, cy), 5, (0, 255, 255), 1)
+                draw_arrow(canvas, center_list[0], center_list[1])
+            canvas = padding(canvas, (canvas.shape[0], comic_book.canvas.shape[1]), (0, 0))[0]
             canvas = add_background(canvas)
             cv2.putText(canvas,  "Step " + str(comic_book.num_instance), (50,50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,255), 1, cv2.LINE_AA)
-            canvas = padding(canvas, (canvas.shape[0], comic_book.canvas.shape[1]), (0, 0))[0]
             canvas = np.concatenate((comic_book.canvas, canvas), axis=0)
             comic_book.canvas = canvas
+        #cv2.imshow('img', comic_book.canvas)
         comic_book.num_instance += 1
 
-
+def get_filename(ls, target):
+    return list(filter(lambda x: int(str(x)[-5]) == target, ls))[0]
 
 
 def main():
     data = pickle.load( open( "node.p", "rb" ))
-    print(data)
-    print(str(glob.glob('test_imgs/folder/*.jpg')[0])[0])
+    file_list = glob.glob('test_imgs/folder/*.jpg')
+    item_list =  list(filter(lambda x: int(str(x)[-5]) < 5,  file_list))
+    item_list = list(map(cv2.imread, item_list))
+    comic_book(item_list)
+    for predict, coord, outcome in data:
+        img1 = cv2.imread(get_filename(file_list, predict[0]))
+        img2 = cv2.imread(get_filename(file_list, predict[1]))
+        out = cv2.imread(get_filename(file_list,outcome))
+        comic_book([img1, img2], coord)
+        comic_book([out])
+    cv2.imwrite('img.jpg', comic_book.canvas)
+
     # canvas, center_list = concat_imgs(['1.jpg', '2.jpg', '5.jpg'])
     # draw_arrow(canvas, center_list[0], center_list[1])
     # canvas = add_background(canvas)
     # cv2.imshow('ddd', canvas)
-    # cv2.waitKey(0)
 
 if __name__ == '__main__':
     main()
