@@ -28,7 +28,7 @@ GAMMA = 0.4
 STEP = 10
 #GPU = False
 GPU = torch.cuda.is_available()
-EPOTH = 50
+EPOTH = 100
 MOMENTUM = 0.7
 
 # MODE could be 'train', 'test',  'all'
@@ -76,8 +76,8 @@ class object_detector():
             self.milestone_file = open(self.path + "mileston_read.txt", "w")
         self.user_input = 0
         self.predict = None
-        self.memory = cache(20)
-        self.memory1 = cache(20)
+        self.memory = cache(10)
+        self.memory1 = cache(10)
         self.hand_memory = cache(10)
 
         self.node_sequence = []
@@ -117,6 +117,7 @@ class object_detector():
                 self.net = Net().cuda()
             self.net.load_state_dict(torch.load(f=self.path + 'model'))
             self.user_input = 5
+            self.stored_flag = True
 
 
     def update(self, save=True, train=False):
@@ -302,6 +303,10 @@ class object_detector():
             self.storing = None
             self.quit = True
             print("quit")
+            if self.stored_flag:
+                x,y,w,h = self.boxls[0]
+                sub_img = self.train_img[y:y+h, x:x+w, :]
+                cv2.imwrite('test_imgs/saved' + str(self.user_input) + '.jpg', sub_img)
         # if event == cv2.EVENT_LBUTTONDBLCLK and (self.temp_surface[y, x] == np.array([255, 0, 255])).all():
         #     self.saving_milstone = True
         #     self.user_input += 1
@@ -462,6 +467,10 @@ class object_detector():
             cv2.putText(draw_img,str(out),(x,y),cv2.FONT_HERSHEY_SIMPLEX, 1.0,(0,0,255))
             self.predict.append(((x, y, w, h), out))
         if not is_tracking:
+            if self.old_come_side is not None and self.new_come_side is None:
+                cv2.putText(draw_img,"Point to next!",(220,50),cv2.FONT_HERSHEY_SIMPLEX, 0.7,(0,0,255), 2)
+            if self.new_come_side is not None and self.old_come_side is not None:
+                cv2.putText(draw_img,"Start Assemble! Click Start when finish",(180,50),cv2.FONT_HERSHEY_SIMPLEX, 0.7,(0,0,255), 2)
             lab, color, ind, coord = self.store_side(frame)
             if lab:
                 self.get_pair(frame.copy(), num_object, lab, color, ind, coord)
@@ -536,10 +545,10 @@ class object_detector():
             if index == 0:
                 self.memory.append(self.predict[0][1])
                 if self.memory.full and self.new_come_id is None:
-                    self.new_come_id = max(set(self.memory.list), key=self.memory.list.count)
+                    self.old_come_id = max(set(self.memory.list), key=self.memory.list.count)
                     # if self.new_come_id == label:
-                    self.new_come_side = self.draw_point(image, coord, index)
-                    print("get one")
+                    self.old_come_side = self.draw_point(image, coord, index)
+        
                     # cv2.circle(image, coord, 5, (125, 125), 1)
                     # x,y,w,h = self.boxls[index]
                     # sub_img = image[y:y+h, x:x+w, :]
@@ -550,9 +559,9 @@ class object_detector():
             if self.memory.full and index == 1:    
                 self.memory1.append(self.predict[-1][1])
                 if self.memory1.full:
-                    self.old_come_id = max(set(self.memory1.list), key=self.memory1.list.count)
+                    self.new_come_id = max(set(self.memory1.list), key=self.memory1.list.count)
                     # if self.old_come_id == label:
-                    self.old_come_side = self.draw_point(image, coord, index)
+                    self.new_come_side = self.draw_point(image, coord, index)
                     # cv2.circle(image, coord, 5, (125, 125), 1)
                     # x,y,w,h = self.boxls[index]
                     # sub_img = image[y:y+h, x:x+w, :]
@@ -566,25 +575,27 @@ class object_detector():
                 self.memory1.clear()
                 print("new_come_id:{}, old_come_id:{}".format(self.new_come_id, self.old_come_id))
                 print("new_come_side:{}, old_come_side:{}".format(self.new_come_side, self.old_come_side))
-        
+        print(self.new_come_side, self.old_come_side)
         
         '''
         pointing from left to right
         '''
         if not self.once and num_object == 2 and self.new_coming_lock:
             if index == 0:
-                self.old_come_side = self.draw_point(image, coord, index, is_milestone=True)
-                
+                self.memory.append(0)
+                if self.memory.full:
+                    self.old_come_side = self.draw_point(image, coord, index, is_milestone=True)
+                    self.memory.clear()
                 # cv2.circle(image, coord, 5, (125, 125), 1)
                 # x,y,w,h = self.boxls[index]
                 # sub_img = image[y:y+h, x:x+w, :]
                 # cv2.imwrite('saved' + str(self.user_input + 1) + '.jpg', sub_img)
             elif index == 1 and self.new_come_id is None:               
-                self.memory.append(self.predict[-1][1])
-                if self.memory.full:
-                    self.new_come_id = max(set(self.memory.list), key=self.memory.list.count)                    
+                self.memory1.append(self.predict[-1][1])
+                if self.memory1.full:
+                    self.new_come_id = max(set(self.memory1.list), key=self.memory1.list.count)                    
                     self.new_come_side = self.draw_point(image, coord, index)
-                    self.memory.clear()
+                    self.memory1.clear()
 
                     
                     # cv2.circle(image, coord, 5, (125, 125), 1)
@@ -603,12 +614,12 @@ class object_detector():
         #cv2.circle(image, coord, 5, (125, 125), 1)
         x,y,w,h = self.boxls[index]
         sub_img = image[y:y+h, x:x+w, :]
-        cv2.circle(sub_img, (coord[0] - x, coord[1] - y) , 5, (125, 125), -1)
+        #cv2.circle(sub_img, (coord[0] - x, coord[1] - y) , 5, (125, 125), -1)
         if not is_milestone:
-            cv2.imwrite('saved' + str(self.predict[index][1]) + '.jpg', sub_img)
+            cv2.imwrite('test_imgs/saved' + str(self.predict[index][1]) + '.jpg', sub_img)
             return (coord[0] - x, coord[1] - y)
         else:
-            cv2.imwrite('saved' + str(self.user_input+1) + '.jpg', sub_img)
+            cv2.imwrite('test_imgs/saved' + str(self.user_input) + '.jpg', sub_img)
             return (coord[0] - x, coord[1] - y)
 
 

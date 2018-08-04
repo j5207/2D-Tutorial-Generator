@@ -12,6 +12,7 @@ import numpy as np
 import random
 import math
 import cv2
+from constant import *
 
 AUGMENT = True
 BATCH_SIZE = 4
@@ -114,8 +115,8 @@ class CovnetDataset(Dataset):
 
 def side_finder(frame, color):
     hsv = cv2.cvtColor(frame,cv2.COLOR_BGR2HSV)
-    red = [np.array([172,62,0]), np.array([180,255,255])]
-    blue = [np.array([100,118,112]), np.array([113,255,255])]
+    red = [Red_low, Red_high]
+    blue = [Blue_low, Blue_high]
     if color == 'red':
         mask = cv2.inRange(hsv, *red)
     elif color == 'blue':

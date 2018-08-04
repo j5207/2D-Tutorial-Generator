@@ -81,9 +81,9 @@ def padding(img, size, point):
 
 
 def concat_imgs(images, point_ls, visualization=False):
+    height, width = 400, 400
     if point_ls is not None:
-        image_list = list(map(cartoon, images))
-        height, width = 350, 350
+        image_list = list(map(cartoon, images))        
         center_list = []
         for i, image in enumerate(image_list):
             if i == 0:
@@ -100,7 +100,6 @@ def concat_imgs(images, point_ls, visualization=False):
         return img1, center_list
     else:
         image_list = list(map(cartoon, images))
-        height, width = 350, 350
         for i, image in enumerate(image_list):
             if i == 0:
                 img1 = padding(image, (height, width), (0, 0))[0]
@@ -176,7 +175,7 @@ def get_filename(ls, target):
 
 def main():
     data = pickle.load( open( "node.p", "rb" ))
-    file_list = glob.glob('test_imgs/folder/*.jpg')
+    file_list = glob.glob('test_imgs/save*.jpg')
     item_list =  list(filter(lambda x: int(str(x)[-5]) < 5,  file_list))
     item_list = list(map(cv2.imread, item_list))
     comic_book(item_list)
