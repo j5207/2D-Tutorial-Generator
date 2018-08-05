@@ -33,7 +33,7 @@ MOMENTUM = 0.7
 SIZE = (50, 50)
 
 # MODE could be 'train', 'test',  'all'
-MODE = 'test'
+MODE = 'train'
 
 distant = lambda (x1, y1), (x2, y2) : sqrt((x1 - x2)**2 + (y1 - y2)**2)
 

@@ -43,7 +43,7 @@ class Net(nn.Module):
         self.conv4 = nn.Conv2d(128, 128, kernel_size=3)
         self.batchnorm4 = nn.BatchNorm2d(128)
         self.fc1 = nn.Linear(10368, 200)
-        self.fc2 = nn.Linear(200, 10)
+        self.fc2 = nn.Linear(200, 20)
 
         # super(Net, self).__init__()
         # self.conv1 = nn.Conv2d(3, 10, kernel_size=5)
