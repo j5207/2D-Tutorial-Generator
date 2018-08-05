@@ -147,13 +147,14 @@ def draw_arrow(img, pt1, pt2):
 
 class comic_book():
     num_instance = 0
+    step = 0
     canvas = None
     def __init__(self, image_list, point=None):
         if comic_book.num_instance == 0:
             canvas= concat_imgs(image_list, point)[0]
             print(canvas.shape)
             canvas = add_background(canvas)
-            cv2.putText(canvas,  "Step " + str(comic_book.num_instance), (50,50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,255), 1, cv2.LINE_AA)
+            cv2.putText(canvas,  "Illustrative Tutorial", (50,50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,255), 1, cv2.LINE_AA)
             comic_book.canvas = canvas
         else:
             canvas, center_list = concat_imgs(image_list, point)
@@ -163,7 +164,11 @@ class comic_book():
                 draw_arrow(canvas, center_list[0], center_list[1])
             canvas = padding(canvas, (canvas.shape[0], comic_book.canvas.shape[1]), (0, 0))[0]
             canvas = add_background(canvas)
-            cv2.putText(canvas,  "Step " + str(comic_book.num_instance), (50,50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,255), 1, cv2.LINE_AA)
+            if point is not None:
+                comic_book.step += 1
+                cv2.putText(canvas,  "Step " + str(comic_book.step), (50,50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,255), 1, cv2.LINE_AA)               
+            else:
+                cv2.putText(canvas,  "Milestone for step " + str(comic_book.step), (50,50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,255), 1, cv2.LINE_AA)
             canvas = np.concatenate((comic_book.canvas, canvas), axis=0)
             comic_book.canvas = canvas
         #cv2.imshow('img', comic_book.canvas)
