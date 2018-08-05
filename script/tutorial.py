@@ -111,13 +111,13 @@ def concat_imgs(images, point_ls, angle=(0,0),visualization=False):
         center_list = []
         for i, image in enumerate(image_list):
             if i == 0:
-                image, pst = rotate_image(image, point_ls[i],-angle[0])
+                image, pst = rotate_image(image, point_ls[i],angle[0])
                 # rotated_pst = np.matmul(matrix, np.array((list(point_ls[i]) + [1]))) 
                 # print(matrix, np.array((list(point_ls[i]) + [1])), rotated_pst)
                 img1, (x,y) = padding(image, (height, width), pst)
                 center_list.append((x, y))
             else:
-                image, pst = rotate_image(image, point_ls[i],-angle[1])
+                image, pst = rotate_image(image, point_ls[i],angle[1])
                 image = cv2.flip(image, 1)
                 pst = (pst[0] - image.shape[1]/2, pst[1])
 
@@ -210,8 +210,6 @@ def get_filename(ls, target):
 
 def main():
     data = pickle.load( open( "node.p", "rb" ))
-    # data = map(lambda x: (x[0], x[1], x[2], (np.rad2deg(x[-1][0]),np.rad2deg(x[-1][1]))), data)
-    print(data)
     file_list = glob.glob('test_imgs/save*.jpg')
     item_list =  list(filter(lambda x: int(str(x)[-5]) < 5,  file_list))
     item_list = list(map(cv2.imread, item_list))
@@ -226,14 +224,12 @@ def main():
 
         comic_book([img2, img1], angle,coord)
         comic_book([out])
-    #cv2.imshow('canvas', comic_book.canvas)
-    #cv2.waitKey(0)
     cv2.imwrite('img.jpg', comic_book.canvas)
-
-    # canvas, center_list = concat_imgs(['1.jpg', '2.jpg', '5.jpg'])
-    # draw_arrow(canvas, center_list[0], center_list[1])
-    # canvas = add_background(canvas)
-    # cv2.imshow('ddd', canvas)
-
+    
+    # img = cv2.imread('test_imgs/saved2.jpg')
+    # cv2.imshow('before', img)
+    # img, _ = rotate_image(img, (0,0), 90)
+    # cv2.imshow('dd', img)
+    # cv2.waitKey(0)
 if __name__ == '__main__':
     main()
