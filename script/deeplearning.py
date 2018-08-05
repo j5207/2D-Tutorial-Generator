@@ -28,8 +28,9 @@ GAMMA = 0.4
 STEP = 10
 #GPU = False
 GPU = torch.cuda.is_available()
-EPOTH = 100
+EPOTH = 30
 MOMENTUM = 0.7
+SIZE = (50, 50)
 
 # MODE could be 'train', 'test',  'all'
 MODE = 'test'
@@ -42,13 +43,14 @@ class node():
     num_instance = 0
     instance_list = []
     pair_list = []
-    def __init__(self, (id1, id2), (side1, side2),outcome):
+    def __init__(self, (id1, id2), (side1, side2),outcome,angle):
         self.pair = (id1, id2)
         self.sides = (side1, side2)
         self.outcome = outcome
+        self.angle = angle
         node.num_instance += 1
         node.instance_list.append(self)
-        node.pair_list.append((self.pair, self.sides,self.outcome))
+        node.pair_list.append((self.pair, self.sides,self.outcome, self.angle))
         print(self)
 
     def __str__(self):
@@ -103,6 +105,9 @@ class object_detector():
         self.old_come_side = None
         self.new_coming_lock = True
         self.once_lock = True
+        
+        self.old_angle = None
+        self.new_angle = None
         #---------------------set some flag-------------------#
         self.storing = None
         self.quit = None
@@ -284,10 +289,10 @@ class object_detector():
             self.storing = True
             if self.user_input > 5:
                 if self.once:
-                    temp_node = node((self.new_come_id, self.old_come_id), (self.new_come_side, self.old_come_side),self.user_input)
+                    temp_node = node((self.new_come_id, self.old_come_id), (self.new_come_side, self.old_come_side),self.user_input, (self.new_angle,self.old_angle))
                     self.once = False
                 else:
-                    temp_node = node((self.new_come_id, self.user_input - 1), (self.new_come_side, self.old_come_side), self.user_input)
+                    temp_node = node((self.new_come_id, self.user_input - 1), (self.new_come_side, self.old_come_side), self.user_input, (self.new_angle,self.old_angle))
                 self.node_sequence.append(temp_node)
             print("start")
         if event == cv2.EVENT_LBUTTONDBLCLK and (self.temp_surface[y, x] == np.array([0, 255, 0])).all() and self.storing:
@@ -371,7 +376,7 @@ class object_detector():
         optimizer = optim.SGD(self.net.parameters(), lr=LR, momentum=MOMENTUM, nesterov=True)
         #optimizer = optim.Adam(self.net.parameters(), lr=LR, weight_decay=0.01)
         schedule = optim.lr_scheduler.StepLR(optimizer, step_size=STEP, gamma=GAMMA)
-        trainset = CovnetDataset(reader=reader_train, transforms=transforms.Compose([transforms.Resize((200, 100)),
+        trainset = CovnetDataset(reader=reader_train, transforms=transforms.Compose([transforms.Resize(SIZE),
                                                                                             transforms.ToTensor()
                                                                                     ]))
         #trainset = CovnetDataset(reader=reader_train, transforms=transforms.Compose([transforms.Pad(30),
@@ -402,6 +407,7 @@ class object_detector():
                     outputs = self.net(inputs)
                     # print(outputs)
                     # print(labels.view(1, -1)[0])
+            
                     loss = F.cross_entropy(outputs, labels.view(1, -1)[0])
                     loss.backward()
                     optimizer.step()
@@ -441,7 +447,7 @@ class object_detector():
         net = self.net
         num_object = len(self.boxls)
         frame = self.train_img
-        preprocess = transforms.Compose([transforms.Resize((200, 100)),
+        preprocess = transforms.Compose([transforms.Resize(SIZE),
                                                     transforms.ToTensor()])
         #preprocess = transforms.Compose([transforms.Pad(30),
          #                                             transforms.ToTensor()])
@@ -470,10 +476,10 @@ class object_detector():
             if self.old_come_side is not None and self.new_come_side is None:
                 cv2.putText(draw_img,"Point to next!",(220,50),cv2.FONT_HERSHEY_SIMPLEX, 0.7,(0,0,255), 2)
             if self.new_come_side is not None and self.old_come_side is not None:
-                cv2.putText(draw_img,"Start Assemble! Click Start when finish",(180,50),cv2.FONT_HERSHEY_SIMPLEX, 0.7,(0,0,255), 2)
-            lab, color, ind, coord = self.store_side(frame)
+                cv2.putText(draw_img,"Start Assemble! Click Start when finish",(150,50),cv2.FONT_HERSHEY_SIMPLEX, 0.7,(0,0,255), 2)
+            lab, color, ind, coord, angle = self.store_side(frame)
             if lab:
-                self.get_pair(frame.copy(), num_object, lab, color, ind, coord)
+                self.get_pair(frame.copy(), num_object, lab, color, ind, coord, angle)
             self.milstone_flag = self.store(is_milestone=True)
             
         # self.memory.append(self.predict)
@@ -482,7 +488,7 @@ class object_detector():
     
     def store_side(self, frame):
         img = frame.copy()
-        point, center = hand_tracking(img, self.hand_memory).get_result()
+        point, center, angle = hand_tracking(img, self.hand_memory).get_result()
         if point and len(self.boxls) > 0:
             red_center = side_finder(img, color='red')
             blue_center = side_finder(img, color='blue')
@@ -528,16 +534,16 @@ class object_detector():
                     color = 'red'
                 elif (x, y) in blue_center:
                     color = 'blue'
-                return self.predict[ind][1], color, ind, (x, y)
+                return self.predict[ind][1], color, ind, (x, y), angle
             else:
-                return None, None, None, None
+                return None, None, None, None, None
         else:
-            return None, None, None, None
+            return None, None, None, None, None
         # 
             
 
 
-    def get_pair(self,image, num_object, label, color, index, coord):
+    def get_pair(self,image, num_object, label, color, index, coord, angle):
         '''
         pointing from left to right
         '''
@@ -548,7 +554,7 @@ class object_detector():
                     self.old_come_id = max(set(self.memory.list), key=self.memory.list.count)
                     # if self.new_come_id == label:
                     self.old_come_side = self.draw_point(image, coord, index)
-        
+                    self.old_angle = angle 
                     # cv2.circle(image, coord, 5, (125, 125), 1)
                     # x,y,w,h = self.boxls[index]
                     # sub_img = image[y:y+h, x:x+w, :]
@@ -562,6 +568,7 @@ class object_detector():
                     self.new_come_id = max(set(self.memory1.list), key=self.memory1.list.count)
                     # if self.old_come_id == label:
                     self.new_come_side = self.draw_point(image, coord, index)
+                    self.new_angle = angle
                     # cv2.circle(image, coord, 5, (125, 125), 1)
                     # x,y,w,h = self.boxls[index]
                     # sub_img = image[y:y+h, x:x+w, :]
@@ -585,6 +592,7 @@ class object_detector():
                 self.memory.append(0)
                 if self.memory.full:
                     self.old_come_side = self.draw_point(image, coord, index, is_milestone=True)
+                    self.old_angle = angle
                     self.memory.clear()
                 # cv2.circle(image, coord, 5, (125, 125), 1)
                 # x,y,w,h = self.boxls[index]
@@ -593,6 +601,7 @@ class object_detector():
             elif index == 1 and self.new_come_id is None:               
                 self.memory1.append(self.predict[-1][1])
                 if self.memory1.full:
+                    self.new_angle = angle
                     self.new_come_id = max(set(self.memory1.list), key=self.memory1.list.count)                    
                     self.new_come_side = self.draw_point(image, coord, index)
                     self.memory1.clear()

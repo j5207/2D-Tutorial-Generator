@@ -11,25 +11,26 @@ import cv2
 
 import cv2
 
-def rotate_image(mat, angle):
-  # angle in degrees
+def rotate_image(mat, point, angle):
+    # angle in degrees
+    height, width = mat.shape[:2]
+    image_center = (width/2, height/2)
 
-  height, width = mat.shape[:2]
-  image_center = (width/2, height/2)
+    rotation_mat = cv2.getRotationMatrix2D(image_center, angle, 1.)
 
-  rotation_mat = cv2.getRotationMatrix2D(image_center, angle, 1.)
+    abs_cos = abs(rotation_mat[0,0])
+    abs_sin = abs(rotation_mat[0,1])
 
-  abs_cos = abs(rotation_mat[0,0])
-  abs_sin = abs(rotation_mat[0,1])
+    bound_w = int(height * abs_sin + width * abs_cos)
+    bound_h = int(height * abs_cos + width * abs_sin)
 
-  bound_w = int(height * abs_sin + width * abs_cos)
-  bound_h = int(height * abs_cos + width * abs_sin)
-
-  rotation_mat[0, 2] += bound_w/2 - image_center[0]
-  rotation_mat[1, 2] += bound_h/2 - image_center[1]
-
-  rotated_mat = cv2.warpAffine(mat, rotation_mat, (bound_w, bound_h))
-  return rotated_mat
+    rotation_mat[0, 2] += bound_w/2 - image_center[0]
+    rotation_mat[1, 2] += bound_h/2 - image_center[1]
+    rotated_pst = np.matmul(rotation_mat, np.array((list(point) + [1])))
+    rotated_mat = cv2.warpAffine(mat, rotation_mat, (bound_w, bound_h))
+    
+    pts = (rotated_pst[0], rotated_pst[1]) 
+    return rotated_mat, pts
 
 def cartoon(input_image, a=14, N=3, p=43):
     #input_image = cv2.imread(input_image)
@@ -103,23 +104,25 @@ def padding(img, size, point):
 
 
 
-def concat_imgs(images, point_ls, angle=0,visualization=False):
+def concat_imgs(images, point_ls, angle=(0,0),visualization=False):
     height, width = 400, 400
     if point_ls is not None:
         image_list = list(map(cartoon, images))        
         center_list = []
         for i, image in enumerate(image_list):
             if i == 0:
-                image = rotate_image(image, angle)
+                image, pst = rotate_image(image, point_ls[i],-angle[0])
                 # rotated_pst = np.matmul(matrix, np.array((list(point_ls[i]) + [1]))) 
                 # print(matrix, np.array((list(point_ls[i]) + [1])), rotated_pst)
-                img1, (x,y) = padding(image, (height, width), point_ls[i])
+                img1, (x,y) = padding(image, (height, width), pst)
                 center_list.append((x, y))
             else:
-                image = rotate_image(image, angle)
+                image, pst = rotate_image(image, point_ls[i],-angle[1])
+                image = cv2.flip(image, 1)
+                pst = (pst[0] - image.shape[1]/2, pst[1])
 
                 img1 = padding(img1, (height, width), (0, 0))[0]
-                image, (x, y) = padding(image, (height, width), point_ls[i])
+                image, (x, y) = padding(image, (height, width), pst)
                 center_list.append((x+img1.shape[1], y))
                 img1 = np.concatenate((img1, image), axis=1)
         if visualization:
@@ -165,8 +168,8 @@ def draw_arrow(img, pt1, pt2):
     alpha = 0.5
     pink = (255, 192, 203)
     overlay = img.copy()
-    pt1 = (pt1[0]+20, pt1[1])
-    pt2 = (pt2[0]-20, pt2[1])
+    pt1 = (int(pt1[0]+20), int(pt1[1]))
+    pt2 = (int(pt2[0]-20), int(pt2[1]))
     cv2.arrowedLine(overlay, pt1, pt2, pink, 5)
     cv2.arrowedLine(overlay, pt2, pt1, pink, 5)
     cv2.addWeighted(overlay, alpha, img, 1-alpha, 0, img)
@@ -176,7 +179,7 @@ class comic_book():
     num_instance = 0
     step = 0
     canvas = None
-    def __init__(self, image_list, point=None):
+    def __init__(self, image_list, angle=(0, 0), point=None):
         if comic_book.num_instance == 0:
             canvas= concat_imgs(image_list, point)[0]
             print(canvas.shape)
@@ -184,7 +187,7 @@ class comic_book():
             cv2.putText(canvas,  "Illustrative Tutorial", (50,50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,255), 1, cv2.LINE_AA)
             comic_book.canvas = canvas
         else:
-            canvas, center_list = concat_imgs(image_list, point,angle=90)
+            canvas, center_list = concat_imgs(image_list, point,angle=angle)
             if point is not None:
                 #for cx, cy in center_list:
                     #cv2.circle(canvas, (cx, cy), 5, (0, 255, 255), 1)
@@ -207,18 +210,24 @@ def get_filename(ls, target):
 
 def main():
     data = pickle.load( open( "node.p", "rb" ))
+    # data = map(lambda x: (x[0], x[1], x[2], (np.rad2deg(x[-1][0]),np.rad2deg(x[-1][1]))), data)
+    print(data)
     file_list = glob.glob('test_imgs/save*.jpg')
     item_list =  list(filter(lambda x: int(str(x)[-5]) < 5,  file_list))
     item_list = list(map(cv2.imread, item_list))
     comic_book(item_list)
-    for predict, coord, outcome in data:
+    for predict, coord, outcome, angle in data:
         img1 = cv2.imread(get_filename(file_list, predict[0]))
         img2 = cv2.imread(get_filename(file_list, predict[1]))
         out = cv2.imread(get_filename(file_list,outcome))
-        comic_book([img1, img2], coord)
+
+        angle = (angle[1], angle[0])
+        coord = (coord[1], coord[0])
+
+        comic_book([img2, img1], angle,coord)
         comic_book([out])
-    cv2.imshow('canvas', comic_book.canvas)
-    cv2.waitKey(0)
+    #cv2.imshow('canvas', comic_book.canvas)
+    #cv2.waitKey(0)
     cv2.imwrite('img.jpg', comic_book.canvas)
 
     # canvas, center_list = concat_imgs(['1.jpg', '2.jpg', '5.jpg'])

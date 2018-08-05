@@ -5,7 +5,7 @@ import heapq
 from utils import cache
 from constant import Hand_low, Hand_high
 from utils import cache
-
+import math
 
 Finger_distanct = 20
 
@@ -39,11 +39,12 @@ class hand_tracking():
         _,thresh = cv2.threshold(median,127,255,0)
         # cv2.imshow('thresh', thresh)
         
-        cv2.imshow('dgs', mask)
+        # cv2.imshow('dgs', mask)
         _, contours, _ = cv2.findContours(mask,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)  
         self.hand_cnt = [] 
         self.only_point = None
         self.center = None
+        self.angle = None
         max_area = 500
         try:	
             for i in range(len(contours)):
@@ -74,7 +75,12 @@ class hand_tracking():
     def get_result(self):
         # return self.hand_cnt
         self.filter()
-        return self.only_point, self.center
+        # if self.only_point is not None and self.center is not None:
+        #     px, py = self.only_point
+        #     cx, cy = self.center
+        #     self.angle = math.atan2(cy-py, cx-px)
+        #     self.angle = np.rad2deg(self.angle)
+        return self.only_point, self.center, self.angle
     
     def filter(self):
         if self.memory.full:
@@ -138,6 +144,11 @@ class hand_tracking():
         
         if self.only_point is not None:
             self.memory.append(1)
+            px, py = self.only_point
+            cx, cy = self.center
+            self.angle = math.atan2(cy-py, cx-px)
+            self.angle = np.rad2deg(self.angle)
+            # print(self.angle)
         else:
             self.memory.append(0)
        
@@ -163,7 +174,9 @@ if __name__ == '__main__':
     cap = cv2.VideoCapture(0)
     while True:
         OK, origin = cap.read()
-        hand_tracking(warp(origin), cache(10))
+        ob = hand_tracking(warp(origin), cache(10))
+        if ob.angle is not None:
+            print(ob.angle)
         k = cv2.waitKey(1) & 0xFF # large wait time to remove freezing
         if k == 113 or k == 27:
             break
