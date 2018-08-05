@@ -7,6 +7,29 @@ from constant import *
 import pickle
 import glob
 
+import cv2
+
+import cv2
+
+def rotate_image(mat, angle):
+  # angle in degrees
+
+  height, width = mat.shape[:2]
+  image_center = (width/2, height/2)
+
+  rotation_mat = cv2.getRotationMatrix2D(image_center, angle, 1.)
+
+  abs_cos = abs(rotation_mat[0,0])
+  abs_sin = abs(rotation_mat[0,1])
+
+  bound_w = int(height * abs_sin + width * abs_cos)
+  bound_h = int(height * abs_cos + width * abs_sin)
+
+  rotation_mat[0, 2] += bound_w/2 - image_center[0]
+  rotation_mat[1, 2] += bound_h/2 - image_center[1]
+
+  rotated_mat = cv2.warpAffine(mat, rotation_mat, (bound_w, bound_h))
+  return rotated_mat
 
 def cartoon(input_image, a=14, N=3, p=43):
     #input_image = cv2.imread(input_image)
@@ -80,16 +103,21 @@ def padding(img, size, point):
 
 
 
-def concat_imgs(images, point_ls, visualization=False):
+def concat_imgs(images, point_ls, angle=0,visualization=False):
     height, width = 400, 400
     if point_ls is not None:
         image_list = list(map(cartoon, images))        
         center_list = []
         for i, image in enumerate(image_list):
             if i == 0:
+                image = rotate_image(image, angle)
+                # rotated_pst = np.matmul(matrix, np.array((list(point_ls[i]) + [1]))) 
+                # print(matrix, np.array((list(point_ls[i]) + [1])), rotated_pst)
                 img1, (x,y) = padding(image, (height, width), point_ls[i])
                 center_list.append((x, y))
             else:
+                image = rotate_image(image, angle)
+
                 img1 = padding(img1, (height, width), (0, 0))[0]
                 image, (x, y) = padding(image, (height, width), point_ls[i])
                 center_list.append((x+img1.shape[1], y))
@@ -136,7 +164,6 @@ def get_center(img, visualization=False):
 def draw_arrow(img, pt1, pt2):
     alpha = 0.5
     pink = (255, 192, 203)
-    output = img.copy()
     overlay = img.copy()
     pt1 = (pt1[0]+20, pt1[1])
     pt2 = (pt2[0]-20, pt2[1])
@@ -157,7 +184,7 @@ class comic_book():
             cv2.putText(canvas,  "Illustrative Tutorial", (50,50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,255), 1, cv2.LINE_AA)
             comic_book.canvas = canvas
         else:
-            canvas, center_list = concat_imgs(image_list, point)
+            canvas, center_list = concat_imgs(image_list, point,angle=90)
             if point is not None:
                 #for cx, cy in center_list:
                     #cv2.circle(canvas, (cx, cy), 5, (0, 255, 255), 1)
@@ -190,6 +217,8 @@ def main():
         out = cv2.imread(get_filename(file_list,outcome))
         comic_book([img1, img2], coord)
         comic_book([out])
+    cv2.imshow('canvas', comic_book.canvas)
+    cv2.waitKey(0)
     cv2.imwrite('img.jpg', comic_book.canvas)
 
     # canvas, center_list = concat_imgs(['1.jpg', '2.jpg', '5.jpg'])
