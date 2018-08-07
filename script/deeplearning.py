@@ -25,15 +25,16 @@ from constant import *
 
 LR = 0.0006
 GAMMA = 0.4
-STEP = 10
+STEP = 5
 #GPU = False
 GPU = torch.cuda.is_available()
 EPOTH = 30
-MOMENTUM = 0.7
+OPTIMIZOR = 'sgd'
+MOMENTUM = 0.4
 SIZE = (50, 50)
-
+CUT_OFF = 10
 # MODE could be 'train', 'test',  'all'
-MODE = 'train'
+MODE = 'test'
 
 distant = lambda (x1, y1), (x2, y2) : sqrt((x1 - x2)**2 + (y1 - y2)**2)
 
@@ -121,7 +122,7 @@ class object_detector():
             else:
                 self.net = Net().cuda()
             self.net.load_state_dict(torch.load(f=self.path + 'model'))
-            self.user_input = 5
+            self.user_input = CUT_OFF
             self.stored_flag = True
 
 
@@ -152,7 +153,7 @@ class object_detector():
             thresh = cv2.subtract(thresh, skin_mask)
             thresh[477:, 50:610] = 0
             #thresh = cv2.dilate(thresh, kernel = np.ones((11,11),np.uint8))
-            cv2.imshow('afg', thresh)
+            cv2.imshow('THRESH', thresh)
             draw_img1 = warp.copy()
             draw_img2 = warp.copy()
             draw_img3 = warp.copy()
@@ -287,7 +288,7 @@ class object_detector():
             self.count = 1
             self.user_input += 1
             self.storing = True
-            if self.user_input > 5:
+            if self.user_input > CUT_OFF:
                 if self.once:
                     temp_node = node((self.new_come_id, self.old_come_id), (self.new_come_side, self.old_come_side),self.user_input, (self.new_angle,self.old_angle))
                     self.once = False
@@ -373,8 +374,10 @@ class object_detector():
                 self.net = Net().cuda()
             reader_train = self.reader(self.path, "read.txt")
             #self.net.load_state_dict(torch.load(f=self.path + 'model'))
-        optimizer = optim.SGD(self.net.parameters(), lr=LR, momentum=MOMENTUM, nesterov=True)
-        #optimizer = optim.Adam(self.net.parameters(), lr=LR, weight_decay=0.01)
+        if OPTIMIZOR == 'sgd':
+            optimizer = optim.SGD(self.net.parameters(), lr=LR, momentum=MOMENTUM, nesterov=True)
+        if OPTIMIZOR == 'adam':
+            optimizer = optim.Adam(self.net.parameters(), lr=LR, weight_decay=0.01)
         schedule = optim.lr_scheduler.StepLR(optimizer, step_size=STEP, gamma=GAMMA)
         trainset = CovnetDataset(reader=reader_train, transforms=transforms.Compose([transforms.Resize(SIZE),
                                                                                             transforms.ToTensor()
@@ -429,7 +432,7 @@ class object_detector():
             self.quit = None
             
             if not is_incremental:
-                self.user_input = 5
+                self.user_input = CUT_OFF
                 torch.save(self.net.state_dict(), f=self.path + 'model')
             else:
                 torch.save(self.net.state_dict(), f=self.path + 'milestone_model')
@@ -495,7 +498,11 @@ class object_detector():
             tape = red_center + blue_center
             length_ls = []
             for (x, y) in tape:
-                length_ls.append((self.get_k_dis((point[0], point[1]), (center[0], center[1]), (x, y)), (x, y)))
+                # length_ls.append((self.get_k_dis((point[0], point[1]), (center[0], center[1]), (x, y)), (x, y)))
+                # if x < point[0] and y < point[1]:
+                length_ls.append((distant((point[0], point[1]), (x, y)), (x, y)))
+            # length_ls = list(filter(lambda x: x[0] < 15, length_ls))
+            # if len(length_ls) > 0:
             x,y = min(length_ls, key=lambda x: x[0])[1]
             cv2.circle(img, (x,y), 10, [255, 255, 0], -1)
             ind = test_insdie((x, y), self.boxls)
@@ -526,7 +533,7 @@ class object_detector():
 
             
             
-            # cv2.imshow("point", img)
+            cv2.imshow("point", img)
             # print(ind, self.predict)
             if ind is not None:
                 color = None
@@ -625,7 +632,7 @@ class object_detector():
         sub_img = image[y:y+h, x:x+w, :]
         #cv2.circle(sub_img, (coord[0] - x, coord[1] - y) , 5, (125, 125), -1)
         if not is_milestone:
-            cv2.imwrite('test_imgs/saved' + str(self.predict[index][1]) + '.jpg', sub_img)
+            cv2.imwrite('test_imgs/saved0' + str(self.predict[index][1]) + '.jpg', sub_img)
             return (coord[0] - x, coord[1] - y)
         else:
             cv2.imwrite('test_imgs/saved' + str(self.user_input) + '.jpg', sub_img)
