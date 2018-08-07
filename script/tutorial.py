@@ -40,7 +40,21 @@ def cartoon(input_image, a=23, N=5, p=100):
 
     hand_mask = cv2.inRange(hsv, Hand_low, Hand_high)
     hand_mask = cv2.dilate(hand_mask, kernel = np.ones((7,7),np.uint8))
-    #green_mask = 255 - green_mask
+    # thresh = 255 - green_mask
+    # object_mask = cv2.subtract(thresh, hand_mask)
+    # cv2.imshow('dd')
+    # (_,object_contours, object_hierarchy)=cv2.findContours(object_mask,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+    # max_area = 0
+    # app = None
+    # surface = np.ones(input_image.shape)
+    # for i , contour in enumerate(object_contours):
+    #     area = cv2.contourArea(contour)
+    #     if object_hierarchy[0, i, 3] == -1 and area > max_area:	
+    #         max_area = area  
+    #         epsilon = 0.001*cv2.arcLength(contour,True)
+    #         app = cv2.approxPolyDP(contour,epsilon,True)
+    # cv2.drawContours(surface,[app],-1,(255, 255, 255),1)
+    # return surface
     res = cv2.bitwise_and(input_image, input_image, mask=green_mask)
     res1 = cv2.bitwise_and(input_image, input_image, mask=hand_mask)
     input_image = cv2.subtract(input_image, res)
@@ -72,21 +86,24 @@ def cartoon(input_image, a=23, N=5, p=100):
     edges = cv2.Canny(median_filtimg2,p,2*p)
     dialateimg =  cv2.dilate(edges,np.ones((3,3),'uint8'))
     edges_inv = cv2.bitwise_not(dialateimg)
+    # cv2.imshow('Toonified Image',edges)       
+    # cv2.waitKey(0)
     _,thresh = cv2.threshold(edges_inv,127,255,0)
     _,contours, _ = cv2.findContours(thresh,1,2)
     img_contours = cv2.drawContours(thresh, contours, -1, (0,0,0), 1)
+    img_contours = cv2.bitwise_not(img_contours)
+    dialateimg = cv2.cvtColor(dialateimg,cv2.COLOR_GRAY2RGB)
 
-    finalimg = median_filtimg.copy()
+    finalimg = dialateimg.copy()
     # for i in range(0,rows):
     #     for j in range(0,cols):
     #         if edges_inv.item(i,j) == 0:
     #             finalimg.itemset((i,j,0),0)
     #             finalimg.itemset((i,j,1),0)
     #             finalimg.itemset((i,j,2),0)
-
+    
     return finalimg
-    cv2.imshow('Toonified Image',finalimg)       
-    cv2.waitKey(0)  
+      
 
 def padding(img, size, point):
     height, width = size
@@ -173,7 +190,7 @@ def get_center(img, visualization=False):
 
 def draw_arrow(img, pt1, pt2):
     alpha = 0.5
-    pink = (255, 192, 203)
+    pink = (0, 0, 255)
     overlay = img.copy()
     pt1 = (int(pt1[0]+20), int(pt1[1]))
     pt2 = (int(pt2[0]-20), int(pt2[1]))
@@ -196,6 +213,8 @@ class comic_book():
     def __init__(self, image_list, angle=(0, 0), point=None):
         if comic_book.num_instance == 0:
             canvas= concat_imgs(image_list, point)[0]
+            # cv2.imshow('dd', canvas)
+            # cv2.waitKey(0)
             canvas = add_background(canvas)
             cv2.putText(canvas,  "Illustrative Tutorial", (50,50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,0), 1, cv2.LINE_AA)
             draw_rect(canvas, 5)
@@ -224,14 +243,10 @@ class comic_book():
         offset = (500, 200)
         px = comic_book.canvas.shape[1] - offset[0]
         py = comic_book.canvas.shape[0] - offset[1]
+        comic_book.canvas[comic_book.canvas == [255, 255, 255]] = 1
         cv2.putText(comic_book.canvas,  "Congratuation!", (px,py), cv2.FONT_HERSHEY_SCRIPT_COMPLEX, 2, (0,0,255), 2)
 
 def get_filename(ls, target):
-    # if target == 11:
-    #     for x in ls:
-    #         print(int(str(x)[-5]) + int(str(x)[-6]) * 10)
-    #         print('dd')
-   # print(list(filter(lambda x: int(str(x)[-5]) + int(str(x)[-6]) * 10  == 11, ls)))
     return list(filter(lambda x: int(str(x)[-5]) + int(str(x)[-6]) * 10  == target, ls))[0]
 
 
