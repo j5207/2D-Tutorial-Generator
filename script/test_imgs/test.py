@@ -15,30 +15,36 @@ def reader(path, mode):
     path= ''.join([path, mode])
     f = open(path)
     data = f.readlines()
-    data_ls = []
+    image_ls = []
+    label_ls = []
     for line in data:
         objects = line.split()
-        data_ls.append((objects[0], objects[1]))
-    lables = set(map(lambda x: int(x[1]), data_ls))
-    output = {}
-    for label in lables:
-        filter_list = list(filter(lambda x: int(x[1]) == label, data_ls))
-        map_list = list(map(lambda x: x[0], filter_list))
-        output[label] = map_list
-    return output
+        image_ls.append(cv2.imread(objects[0]))
+        label_ls.append(int(objects[1]))
+    #     data_ls.append((objects[0], objects[1]))
+    # lables = set(map(lambda x: int(x[1]), data_ls))
+    # output = {}
+    # for label in lables:
+    #     filter_list = list(filter(lambda x: int(x[1]) == label, data_ls))
+    #     map_list = list(map(lambda x: x[0], filter_list))
+    #     output[label] = map_list
+        
+    return image_ls, label_ls
 
 base_path = "/Users/jihan/Desktop/Smart-Projector/script/datasets/"
-data = reader(base_path, "read.txt")
-print(data[1])
+images, labels = reader(base_path, "read.txt")
 sc = shape_context.ShapeContext()
 def sc_array(img):
     sp = morphology_utils.shape_points(img, 30)
     bh = sc.compute(sp)
     return bh
-
-img = cv2.imread('saved01.jpg')
-h = sc_array(img)
-print(h.shape)
+num_cores = multiprocessing.cpu_count()
+sc_arrays_list  = Parallel(n_jobs=num_cores)(delayed(sc_array)(img) for img in images)
+sc_arrays = np.array(sc_arrays_list)
+print(sc_array)
+# img = cv2.imread('saved01.jpg')
+# h = sc_array(img)
+# print(h.shape)
 
 
 
